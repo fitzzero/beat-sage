@@ -1,0 +1,38 @@
+{
+  "name": "@beatsage/client",
+  "version": "0.1.0",
+  "description": "Client-side application for Beat Sage",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "clean": "rm -rf .next",
+    "test": "echo \"Client tests not implemented yet\""
+  },
+  "dependencies": {
+    "next": "^14.2.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "next-auth": "^4.24.0",
+    "@next-auth/prisma-adapter": "^1.0.7",
+    "@mui/material": "^5.16.0",
+    "@mui/icons-material": "^5.16.0",
+    "@emotion/react": "^11.13.0",
+    "@emotion/styled": "^11.13.0",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.1.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.6.0",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^14.2.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "@types/pg": "^8.15.5"
+  }
+}

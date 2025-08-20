@@ -1,0 +1,35 @@
+---
+description: Test authoring conventions (integration + unit)
+globs: server/src/__tests__/**/*.ts
+alwaysApply: false
+---
+
+## Tests (workspace rule)
+
+- **Goals**
+  - Favor integration tests for public service methods (socket acks + events)
+  - Seed minimal users with clear ACL roles; reset DB between tests
+  - Verify both service-level and entry-level ACLs; assert subscription updates
+  - Keep tests short, targeted, and confidence-inspiring for client success
+
+### Day-to-day workflow
+
+- **Run only changed/related tests while developing**
+
+  - Only changed since last commit: `yarn workspace @beatsage/server test --onlyChanged`
+  - Related to modified files: `yarn workspace @beatsage/server test --findRelatedTests $(git diff --name-only HEAD)`
+  - Watch mode while iterating: `yarn workspace @beatsage/server test --watch`
+
+- **Target specific tests quickly**
+  - Single file: `yarn workspace @beatsage/server test -i src/__tests__/services/userService.int.test.ts`
+  - By name: `yarn workspace @beatsage/server test -i -t "admin can update any user"`
+
+### Pre-commit (commit-gating)
+
+- **Run the full server checks before committing**
+  - `yarn typecheck:server && yarn lint:server && yarn test:server`
+
+### Notes
+
+- Use Yarn Workspaces; avoid npm.
+- Use `ENABLE_DEV_CREDENTIALS=true` locally so integration tests can auth via userId.

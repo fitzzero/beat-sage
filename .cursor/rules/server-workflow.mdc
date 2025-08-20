@@ -1,0 +1,20 @@
+---
+description: Server workflow (typecheck/lint/test, logging policy, logger initialization)
+globs: server/**/*.ts,server/jest.config.cjs,server/package.json
+alwaysApply: false
+---
+
+- Checks:
+  - Typecheck: `yarn typecheck:server`
+  - Lint: `yarn lint:server`
+  - Tests: `yarn test:server`
+- DB (Prisma): prefer `yarn prisma:generate`, `yarn db:push`, `yarn db:migrate:dev`, and `yarn db:studio`
+- Logs: verify hot reload before suggesting a restart
+  - Use: `tail -X server/logs/combined.log`
+- Do not automatically restart the dev server; confirm via logs first
+- Logger initialization
+  - Classes: `this.logger = logger.child({ service: this.constructor.name })`
+  - Modules: `const logger = baseLogger.child({ service: "ModuleName" })`
+- Logging formats
+  - Human: `time @ service (LEVEL): message`
+  - JSON: structured metadata with categories for easy analysis

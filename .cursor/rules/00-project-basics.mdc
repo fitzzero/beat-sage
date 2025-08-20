@@ -1,0 +1,16 @@
+---
+description: Core Farseer project guidelines (evergreen)
+alwaysApply: true
+---
+
+- Less code > more new code. If there's a way to reduce, reuse, or recycle -- use it. This applies to new feature work, bug fixing, or refactoring. More LOC, more problems.
+- Use Yarn Workspaces; do not use npm
+- No emojis anywhere (code, logs, commits)
+- Prefer `docs/` for plans/architecture; avoid temporary inline comments
+- Use `scripts/mcp` for Cursor-specific tools
+- Follow strict TypeScript and ESLint configs from `tsconfig.json` and `.eslintrc.json`
+- Maintain consistent naming, structure, and patterns across services and components
+- Monorepo checks from root: `yarn typecheck`, `yarn lint`
+- Commit format: `name_of_active_plan: phase.X`
+- Environment variables: set via `~/.zshrc` (do not paste inline)
+- Before committing: ensure typecheck, lint, and tests pass [[prefer-commit-gating]]

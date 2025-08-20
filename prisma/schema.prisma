@@ -1,0 +1,210 @@
+// Prisma schema for Beat Sage – single source of truth for DB and types
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------
+// NextAuth core models
+// ----------------------
+
+model User {
+  id             String    @id @default(uuid()) @db.Uuid
+  email          String    @unique
+  username       String?   @unique
+  name           String?
+  image          String?
+  emailVerified  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  // Project-specific fields
+  acl            Json?
+  serviceAccess  Json?
+
+  accounts       Account[]
+  sessions       Session[]
+  createdChats   Chat[]     @relation("UserCreatedChats")
+  agents         Agent[]    @relation("UserAgents")
+  messages       Message[]  @relation("UserMessages")
+  // Pruned models: Project, Task
+
+  @@map("users")
+}
+
+model Account {
+  id                 String  @id @default(uuid()) @db.Uuid
+  userId             String  @db.Uuid
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?
+  access_token       String?
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?
+  session_state      String?
+
+  user               User    @relation(fields: [userId], references: [id])
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id            String   @id @default(uuid()) @db.Uuid
+  sessionToken  String   @unique
+  userId        String   @db.Uuid
+  expires       DateTime
+
+  user          User     @relation(fields: [userId], references: [id])
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier  String
+  token       String
+  expires     DateTime
+
+  @@id([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ----------------------
+// Core domain models
+// ----------------------
+
+model Model {
+  id                  String   @id @default(uuid()) @db.Uuid
+  provider            String
+  modelKey            String
+  displayName         String
+  contextWindowTokens Int      @default(0)
+  isActive            Boolean  @default(true)
+  priceInputPer1k     Decimal?
+  priceOutputPer1k    Decimal?
+  totalRequests       BigInt   @default(0)
+  totalInputTokens    BigInt   @default(0)
+  totalOutputTokens   BigInt   @default(0)
+  lastUsedAt          DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  agents              Agent[]
+  messages            Message[]
+
+  @@map("models")
+}
+
+model Agent {
+  id             String   @id @default(uuid()) @db.Uuid
+  ownerId        String   @db.Uuid
+  defaultModelId String?  @db.Uuid
+  name           String
+  description    String?
+  instructions   String?
+  tools          Json?
+  acl            Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  owner          User     @relation("UserAgents", fields: [ownerId], references: [id])
+  defaultModel   Model?   @relation(fields: [defaultModelId], references: [id])
+  messages       Message[]
+  chats          Chat[]
+  // Pruned models: Project, Task
+
+  @@map("agents")
+}
+
+model Chat {
+  id           String   @id @default(uuid()) @db.Uuid
+  createdBy    String   @db.Uuid
+  agentId      String?  @db.Uuid
+  title        String
+  systemPrompt String?
+  archived     Boolean  @default(false)
+  acl          Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  creator      User     @relation("UserCreatedChats", fields: [createdBy], references: [id])
+  agent        Agent?   @relation(fields: [agentId], references: [id])
+  messages     Message[]
+
+  @@map("chats")
+}
+
+model Message {
+  id             String   @id @default(uuid()) @db.Uuid
+  chatId         String   @db.Uuid
+  senderUserId   String?  @db.Uuid
+  senderAgentId  String?  @db.Uuid
+  role           String
+  content        String
+  modelId        String?  @db.Uuid
+  inputTokens    Int?
+  outputTokens   Int?
+  costUSD        Decimal?
+  toolCalls      Json?
+  toolResults    Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  chat           Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  senderUser     User?    @relation("UserMessages", fields: [senderUserId], references: [id])
+  senderAgent    Agent?   @relation(fields: [senderAgentId], references: [id])
+  model          Model?   @relation(fields: [modelId], references: [id])
+
+  @@map("messages")
+}
+
+
+// ----------------------
+// Memory models
+// ----------------------
+
+model Memory {
+  id             String   @id @default(uuid()) @db.Uuid
+  // Ownership and context
+  userId         String?  @db.Uuid
+  agentId        String?  @db.Uuid
+  chatId         String?  @db.Uuid
+
+  // Core content and typing
+  title          String?
+  content        String
+  type           String
+  source         String
+  tags           String[]
+
+  // Associations/graph
+  associatedIds  String[]
+
+  // Access control per entry (row-level ACL)
+  acl            Json?
+
+  // Observability & hygiene
+  importance     Int       @default(0)
+  pinned         Boolean   @default(false)
+  lastAccessedAt DateTime?
+  usageCount     Int       @default(0)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([agentId])
+  @@index([chatId])
+  @@index([type])
+  @@map("memories")
+}
+
+
+// Pruned: Project, Task, and OANDA/Instrument models

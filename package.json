@@ -1,0 +1,64 @@
+{
+  "name": "beat-sage",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "build": "yarn prisma:generate && yarn workspace @beatsage/server build && yarn workspace @beatsage/client build",
+    "build:client": "yarn workspace @beatsage/client build",
+    "build:server": "yarn workspace @beatsage/server build",
+    "clean": "yarn workspace @beatsage/server clean && yarn workspace @beatsage/client clean",
+    "dev": "concurrently \"yarn dev:server\" \"yarn dev:client\"",
+    "dev:client": "yarn workspace @beatsage/client dev",
+    "dev:server": "yarn workspace @beatsage/server dev",
+    "lint": "yarn lint:server && yarn lint:client",
+    "lint:server": "yarn workspace @beatsage/server lint",
+    "lint:client": "yarn workspace @beatsage/client lint",
+    "playwright": "npx @playwright/mcp@latest --config playwright-mcp.config.json --port 8931",
+    "typecheck": "yarn typecheck:server && yarn typecheck:client",
+    "typecheck:server": "yarn workspace @beatsage/server typecheck",
+    "typecheck:client": "yarn workspace @beatsage/client typecheck",
+    "test": "yarn test:server",
+    "test:server": "yarn workspace @beatsage/server test",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "logs": "yarn workspace @beatsage/server logs",
+    "logs:recent": "yarn workspace @beatsage/server logs:recent",
+    "logs:today": "yarn workspace @beatsage/server logs:today",
+    "logs:clean": "yarn workspace @beatsage/server logs:clean",
+    "db:generate": "yarn prisma:generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:push": "prisma db push",
+    "db:ensure": "echo 'Use prisma migrate or db push'",
+    "db:seed": "ts-node server/src/db/seed.ts",
+    "db:studio": "prisma studio",
+    "prisma:init": "prisma init --url=$DATABASE_URL",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate:dev": "prisma migrate dev --name init --create-only",
+    "prisma:migrate:reset": "prisma migrate reset --force",
+    "docs:generate": "yarn workspace @beatsage/server docs:generate"
+  },
+  "engines": {
+    "node": "^22.0.0",
+    "yarn": "^1.22.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "@typescript-eslint/eslint-plugin": "^8.38.0",
+    "@typescript-eslint/parser": "^8.38.0",
+    "concurrently": "^9.2.0",
+    "eslint": "^9.32.0",
+    "prisma": "^6.13.0",
+    "typescript-eslint": "^8.38.0"
+  },
+  "resolutions": {},
+  "dependencies": {
+    "@next-auth/prisma-adapter": "^1.0.7",
+    "@prisma/client": "^6.13.0",
+    "react-markdown": "^10.1.0"
+  }
+}

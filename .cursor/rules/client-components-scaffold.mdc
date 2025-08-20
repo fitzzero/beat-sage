@@ -1,0 +1,41 @@
+---
+description: Component scaffolding patterns for MUI + Next (containers, colors, spacing)
+globs: client/app/**/*.tsx
+alwaysApply: false
+---
+
+- Containers
+
+  - Pages and major sections should render content inside a single `Container` provided by the layout (default `maxWidth="md"`).
+  - Avoid nested `Container` components inside pages when the layout already provides one.
+  - Prefer `Stack` for simple row/column layouts instead of hardcoding `Box` flex props. Reserve `Grid` for multi-row/column responsive layouts.
+
+- Colors and spacing
+
+  - Do not hardcode hex colors in components. Use theme tokens like `primary.main`, `text.secondary`, `divider`.
+  - Avoid hardcoded pixel values. Prefer `theme.spacing(n)` or responsive `sx` objects.
+
+- Responsiveness
+
+  - Do not inline media queries. Prefer `sx` responsive values or a single `useIsMobile` hook.
+  - Use the Drawer pattern: `permanent` on desktop, `SwipeableDrawer` on mobile.
+
+- Navigation
+
+  - Drive nav from a typed route config. Use `next/link` via `ListItemButton component={Link}`.
+  - Indicate selected state via `usePathname()`.
+
+- Composition
+
+  - Keep components under 500 lines; extract subcomponents.
+  - Avoid bespoke CSS; rely on MUI props and centralized theme overrides.
+
+- Service-integrated inputs
+
+  - When interfacing with socket-backed service methods or subscriptions, prefer Socket Inputs over raw MUI inputs:
+    - Use `SocketTextField`, `SocketSwitch`, `SocketCheckbox`, `SocketSlider`, `SocketSelect` from `client/app/components/inputs/`.
+    - They accept `{ state, update, property }` and handle local value, commit modes (change/blur/enter), debounce, and in-flight state.
+    - Pass regular MUI props (label, helperText, fullWidth, etc.) through as usual.
+  - Do not embed socket or service logic directly in UI components; use the existing hooks (`useSubscription`, `useServiceMethod`) and service-specific wrappers (e.g., `useUserSub`, `useUserUpdate`).
+  - Keep validation and complex formatting outside; the components support optional `format/parse` for simple transforms.
+  - Prefer `commitMode="blur"` for text inputs by default to reduce chatter; use `commitMode="change"` for toggles.

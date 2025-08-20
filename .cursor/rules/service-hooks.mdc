@@ -1,0 +1,33 @@
+---
+description: Service hook structure and naming
+globs: client/app/hooks/**/*.ts
+alwaysApply: false
+---
+
+- Core primitives
+
+  - `useServiceMethod(serviceName, methodName)` for invoking public methods
+  - `useSubscription(serviceName, entryId)` for realtime entry updates
+
+- Structure
+
+  - One file per method under `app/hooks/<service>/`, e.g. `hooks/user/useUserUpdate.ts`
+  - Export all service hooks from `app/hooks/index.ts`
+  - Centralize type maps in `app/hooks/types.ts`
+
+- Naming
+
+  - Core hooks require explicit IDs; convenience hooks add session logic
+  - Drop the "Typed" prefix; keep names direct: `useUserSub`, `useUserUpdate`
+
+- Event naming (server)
+
+  - Method: `${serviceName}:${method}`
+  - Subscription: `${serviceName}:subscribe|unsubscribe`
+  - Updates: `${serviceName}:update:${entryId}`
+
+- Guidelines
+  - Hooks should not embed styling or UI concerns
+  - Prefer returning `{ run, isLoading, error, data }` or a similar SWR-like shape
+  - Reuse the generic primitives; avoid bespoke socket code in feature hooks
+  - Keep files short; extract shared helpers if logic grows

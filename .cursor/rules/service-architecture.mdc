@@ -1,0 +1,129 @@
+---
+description: Concise guide for creating and testing Server Services (BaseService pattern, public methods, ACLs)
+globs: server/src/services/**/*.ts
+alwaysApply: false
+---
+
+### Service pattern (BaseService)
+
+- Service = data + behavior for a table. Each Service extends `BaseService` and provides options:
+
+  - `model`: Prisma model key (e.g., "user", "chat") with `id` column
+  - `serviceName`: stable service key (e.g., "userService") used for event names
+  - `hasEntryACL`: if true, entries may store `acl` (Array<{ userId, level }>) for per-entry overrides
+  - `defaultACL` (legacy/testing): in-memory ACE list; prefer DB-backed ACL via `users.service_access`
+
+- Core runtime
+  - Realtime: `subscribe(entryId, socket)` / `unsubscribe` manage subscribers; emits `${serviceName}:update:${entryId}`
+  - CRUD: `create|update|delete` auto-emit updates to subscribers
+  - Access checks: `checkAccess(userId, entryId, requiredLevel, socket)`
+    - Default deny in `BaseService`; Services override
+    - Server caches service-level ACLs at connect on `socket.serviceAccess`
+    - If `hasEntryACL`, `BaseService.subscribe` falls back to the entry row’s `acl` when service-level denies
+
+### Organization
+
+- Place each service in its own folder under `server/src/services/<service>/`.
+- Keep the service class thin in `index.ts` and extract each public method to `methods/<method>.ts`.
+- Optional (as services grow): add `repo.ts` for queries, `acl.ts` for access helpers, and `types.ts` for service-local types.
+- Optional (as services grow): add `repo.ts` for queries, `acl.ts` for access helpers, and `types.ts` for service-local types.
+- Tests: place under `server/src/__tests__/services/` (unit + integration) alongside other service tests. Do not colocate under service folders.
+
+Example structure:
+
+- `server/src/services/user/`
+  - `index.ts` (UserService wiring; calls `definePublicMethod`)
+  - `methods/updateUser.ts` (business logic; pure function receiving `service` and `socket`)
+  - `repo.ts` (optional)
+  - `acl.ts` (optional)
+  - `types.ts` (optional)
+
+### Public methods (server)
+
+- Prefer `this.defineMethod<K extends keyof ServiceMethods>(...)` which is a thin typed wrapper around `definePublicMethod`
+- Registered automatically by the `ServiceRegistry` as `${serviceName}:${methodName}` events
+- Return with `this.exactResponse("methodName", value)` to enforce exact response shape (prevents extra props)
+- Handler responsibilities:
+  - Require auth (socket.userId)
+  - Enforce access: call `this.checkAccess(userId, entryId, requiredLevel, socket)` or rely on BaseService `ensureAccessForMethod` when using `resolveEntryId`
+  - Validate payloads; only mutate allowed fields
+  - Use BaseService CRUD (`this.create|update|delete`) for entry mutations; never call Prisma delegates directly for writes
+  - Return Prisma types directly unless there is a strong reason to shape a DTO
+
+### Access control (simple + fast)
+
+- Service-level ACLs persist in `users.service_access` as `{ [serviceName]: "Read" | "Moderate" | "Admin" }`
+  - Hydrated once on connect into `socket.serviceAccess`
+  - `checkAccess` should consult `socket.serviceAccess[serviceName]` before entry ACLs
+- Entry-level ACLs: when `hasEntryACL`, entry rows may include an `acl` list; `subscribe` checks it on-demand
+- Typical rule of thumb
+  - Self actions allowed where appropriate (e.g., a user updating themselves)
+  - Cross-entry actions require service-level `Moderate` or `Admin`
+
+### Testing strategy
+
+- Unit tests (system-only)
+
+  - Call internal methods via bracket access (e.g., `service["update"](...)`) or factor helpers into dedicated modules
+  - Validate CRUD behavior and helper logic without sockets
+
+- Integration tests (public methods)
+
+  - Start an ephemeral Socket.IO server and use `socket.io-client`
+  - Connect as seeded users; in local/CI, prefer:
+    - Local dev: `ENABLE_DEV_CREDENTIALS=true` → `io(url, { auth: { userId } })`
+    - CI/production-like: short-lived `socketToken` in `auth`
+  - Emit `${serviceName}:${method}` with payload and assert ack and update events
+  - Seed DB with admin/moderate/regular users; assign `users.service_access` accordingly
+
+- TDD for public methods
+  - Write the integration spec first (desired behavior, ACL scenarios, validation)
+  - Implement the method and minimal schema changes to satisfy tests
+  - Keep tests authoritative so UI/Playwright later has low ambiguity
+
+### Practical notes
+
+Event names:
+
+- Method: `${serviceName}:${method}`
+- Subscription: `${serviceName}:subscribe|unsubscribe`
+- Updates: `${serviceName}:update:${entryId}`
+  Keep service APIs small and composable; push validation close to method boundary.
+  Prefer DB-backed ACLs; in-memory ACLs are for testing only.
+  Log with `this.logger = logger.child({ service: this.constructor.name })` for consistency.
+
+### Write operations policy (critical)
+
+- Always use `this.create`, `this.update`, and `this.delete` for entry mutations inside services.
+  - These methods automatically:
+    - Emit `${serviceName}:update:${entryId}` events to active subscribers
+    - Centralize audit/logging via the service logger
+    - Keep socket-side behavior consistent across services
+- Do not call `prisma.<model>.create|update|delete` directly from service handlers for entry mutations.
+  - If you need a shape not covered by BaseService (e.g., increments, partial merges, upserts), add a small helper or extend BaseService to cover the case instead of bypassing it.
+- When direct Prisma calls are fine:
+  - Reads (findUnique/findMany), lists, aggregations, complex filters, or non-entry data that won’t be broadcast to subscribers
+  - Admin list/search queries that don’t mutate an entry
+
+Examples
+
+- Good (emits automatically):
+
+```ts
+return this.exactResponse(
+  "updateTitle",
+  await this.update(id, { title: payload.title } as Record<string, unknown>)
+);
+```
+
+- Avoid (skips emit/logging):
+
+```ts
+await prisma.chat.update({ where: { id }, data: { title: payload.title } });
+```
+
+Rationale
+
+- Consistency: socket updates and logs work uniformly across services
+- Safety: fewer chances to forget emits or leak inconsistent state
+- Maintainability: one place to evolve cross-cutting behavior (logging, ACL checks, observability)

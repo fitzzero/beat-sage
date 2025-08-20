@@ -1,0 +1,12 @@
+---
+description: Client UI conventions (Material-UI defaults, centralized styling)
+globs: client/app/**/*.tsx,client/app/theme.ts
+alwaysApply: false
+---
+
+- Prefer Material-UI defaults; minimal customization
+- Centralize custom styles in `client/app/theme.ts`
+- Avoid one-off untyped CSS or duplicated `sx`; prefer theme and MUI props
+- Use `rem` units for font sizes
+- Abstract responsive breakpoints via a single custom hook (avoid prop threading)
+- Keep individual components under 500 lines; extract subcomponents when needed
