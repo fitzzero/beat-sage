@@ -31,6 +31,7 @@ model User {
   createdChats   Chat[]     @relation("UserCreatedChats")
   agents         Agent[]    @relation("UserAgents")
   messages       Message[]  @relation("UserMessages")
+  characters     Character[]
   // Pruned models: Project, Task
 
   @@map("users")
@@ -206,5 +207,208 @@ model Memory {
   @@map("memories")
 }
 
+// ----------------------
+// Beat Sage game models
+// ----------------------
 
-// Pruned: Project, Task, and OANDA/Instrument models
+enum Direction {
+  Up
+  Down
+  Left
+  Right
+}
+
+enum TargetPriority {
+  Closest
+  HighestHealth
+  LowestHealth
+  Furthest
+}
+
+enum PartyStatus {
+  Lobby
+  Ready
+  InInstance
+  Complete
+}
+
+enum InstanceStatus {
+  Pending
+  Active
+  Complete
+  Failed
+}
+
+enum MobStatus {
+  Alive
+  Dead
+}
+
+model Character {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  name      String
+  online    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id])
+  mana      Mana?
+  skills    Skill[]
+  members   PartyMember[]
+  hostedParty Party?
+
+  @@index([userId])
+}
+
+model Mana {
+  id          String   @id @default(uuid()) @db.Uuid
+  characterId String   @unique @db.Uuid
+  current     Int      @default(0)
+  maximum     Int      @default(100)
+  experience  Int      @default(0)
+  rate        Int      @default(0)
+  maxRate     Int      @default(5)
+
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+}
+
+model Skill {
+  id             String         @id @default(uuid()) @db.Uuid
+  characterId    String         @db.Uuid
+  name           String
+  manaCost       Int
+  damage         Int
+  cooldownMs     Int
+  lastCastAt     DateTime?
+  mastery        Int            @default(0)
+  totalCasts     Int            @default(0)
+  priority       Int?
+  targetPriority TargetPriority
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  character      Character      @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, priority])
+  @@index([characterId])
+}
+
+model Genre {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  description String?
+  songs       Song[]
+}
+
+model Song {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  genreId   String   @db.Uuid
+  src       String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  genre     Genre    @relation(fields: [genreId], references: [id])
+  beats     SongBeat[]
+  instances Instance[]
+}
+
+model SongBeat {
+  id        String    @id @default(uuid()) @db.Uuid
+  songId    String    @db.Uuid
+  index     Int
+  timeMs    Int
+  direction Direction
+  holdMs    Int       @default(0)
+
+  song      Song      @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@unique([songId, index])
+  @@index([songId])
+}
+
+model Location {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  coordinates String?
+  image       String?
+  difficulty  Int
+  instances   Instance[]
+}
+
+model Mob {
+  id                   String   @id @default(uuid()) @db.Uuid
+  name                 String
+  image                String?
+  healthBase           Int
+  healthMultiplier     Decimal
+  damageBase           Int
+  damageMultiplier     Decimal
+  xpBase               Int
+  xpMultiplier         Decimal
+  spawnRate            Float
+  spawnRateMultiplier  Float
+  instanceMobs         InstanceMob[]
+}
+
+model Party {
+  id               String      @id @default(uuid()) @db.Uuid
+  hostCharacterId  String      @unique @db.Uuid
+  status           PartyStatus @default(Lobby)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  host             Character   @relation(fields: [hostCharacterId], references: [id])
+  members          PartyMember[]
+  instances        Instance[]
+}
+
+model PartyMember {
+  id           String    @id @default(uuid()) @db.Uuid
+  partyId      String    @db.Uuid
+  characterId  String    @unique @db.Uuid
+  isReady      Boolean   @default(false)
+
+  party        Party     @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  character    Character  @relation(fields: [characterId], references: [id])
+
+  @@unique([partyId, characterId])
+  @@index([partyId])
+}
+
+model Instance {
+  id          String         @id @default(uuid()) @db.Uuid
+  partyId     String         @db.Uuid
+  locationId  String         @db.Uuid
+  songId      String         @db.Uuid
+  status      InstanceStatus @default(Pending)
+  startedAt   DateTime?
+  endedAt     DateTime?
+
+  party       Party          @relation(fields: [partyId], references: [id])
+  location    Location       @relation(fields: [locationId], references: [id])
+  song        Song           @relation(fields: [songId], references: [id])
+  mobs        InstanceMob[]
+
+  @@index([partyId])
+  @@index([locationId])
+  @@index([songId])
+}
+
+model InstanceMob {
+  id            String     @id @default(uuid()) @db.Uuid
+  instanceId    String     @db.Uuid
+  mobId         String     @db.Uuid
+  healthCurrent Int
+  status        MobStatus  @default(Alive)
+  distance      Int
+  xpPerDamage   Int
+  damagePerHit  Int
+
+  instance      Instance   @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  mob           Mob        @relation(fields: [mobId], references: [id])
+
+  @@index([instanceId])
+  @@index([mobId])
+}
