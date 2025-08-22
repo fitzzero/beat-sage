@@ -1,139 +1,12 @@
 ## Goal
 
-Create a web based rhythm based game utilizing the mono repo full stack framework.
+Build a co-op DDR-style rhythm cultivation game on our monorepo. This spec is the single source of truth for schema, services, realtime flows, and delivery stages.
 
-## Services
+## Vision (brief)
 
-- characterService (1 user to many characters)
-  - Created by a user to act as their avatar
-  - Props include
-    - Name
-    - HealthCurrent
-    - HealthMax
-    - ManaCore (manaService relation)
-    - User (userService relation)
-    - Skills (skillService relation)
-    - Online (boolean)
-- manaService (1 character to 1 mana)
-  - Props include
-    - Current
-    - Maximum
-    - Experience
-    - Rate
-    - Max Rate
-- skillService (1 character to many skills)
-  - Props include
-    - Character // who's skill is it
-    - Mastery //number
-    - Name
-    - ManaCost
-    - Damage
-    - Cooldown
-    - LastCast (To double check if cooldown has passed)
-    - TotalCasts (fun stat)
-    - Priority // number, unique (only 1 skill for a player can be priority 1, can be set to null which is its inactive state)
-    - TargetPriority // Enum
-      - [Closest, Highest Health, Lowest Health, Furthest]
-- genreService (skills and eventually other services will reference this music genre)
-  - Props to include
-    - Name
-    - Description
-- partyService (group of characters)
-  - Props to include
-    - Host (character relation, character can only host one party at a time so this should be unique)
-    - Character (character relation, character can only be in one party at a time so this should be unique)
-    - Ready //boolean of ready state, join Instance when all are ready
-    - Instance (instantService relation) // Where the party is
-- instanceService (a live game with the party with a start and end)
-  - Props to include
-    - Location (locationService relation)
-    - CreatedAt
-    - EndedAt
-    - Party (partyService relation) // Who is at the location
-    - Mobs (instanceMobService relation)
-    - Song (songService relation)
-- instanceMobService (which mobs are active or killed in this instance)
-  - Props to include
-    - Mob (mobService relation)
-    - HealthCurrent (calculated health mob spawns in with)
-    - Status // dead or alive
-    - ManaCurrent
-    - Xp (How much xp to grant per 1 damage)
-    - Damage (How much damage to deal per attack)
-    - Distance (How close to player are they)
-- locationService (map of different locations parties can venture to)
-  - Props to include
-    - Name
-    - Coordinates
-    - Image
-    - Difficulty // number
-    - Mobs (mobService relationship, who can spawn)
-- mobService (enemies that can spawn in a location)
-  - Props to include
-    - Name
-    - Image
-    - HealthBase
-    - HealthyMultiplier //How much to multiply health on spawn based on Instance difficulty mob spawns in
-    - DamageBase
-    - DamageMultiplier // How much to multiply damage on spawn based on Instance difficulty mob spawns in
-    - XpBase // XP to grant per 1 damage taken
-    - XpMultiplier // How much to multiply xp per damage taken
-    - SpawnRate // Chance to spawn
-    - SpawnRateMultiplier // How much to increase chance based on difficulty
-- songService (A song to be played in an instance)
-  - Name
-  - Genre (generService relation)
-  - Src (file location of the song to play)
-  - BeatMap (Array of Beats)
-    - Direction (Up, Down, Left, Right)
-    - Time (in ms)
-    - Hold (duration in ms)
-
-## Happy Path (how all the services play together)
-
-1. User creates a new character (characterService)
-2. Character is granted a mana core (manaService)
-3. Character is granted starter hard coded skills (skillService)
-   - Can adjust skills to active (setting a priority 1-8) or inactive
-4. Character is assigned to their own party of 1 (partyService)
-   - Can invite or join other parties if they wish
-5. User can select a Instance for their party (instanceService)
-6. User can select a Song for their party (songService)
-7. User can set their status to ready (partyService)
-8. Once party instance & song chosen and party is ready, Instance begins (instanceService)
-   - Due to the live nature of instances, may make sense to maintain state in memory while active, only periodically saving state to database
-   - inMemory state should send similar socket.emit updates as baseService.update (so that subscribed clients can still get real time info even if database isn't updating in real time)
-9. Instance has a warmup phase
-10. Instance then tells client to start the song
-    - Characters must follow a 'DDR inspired' beatmap which starts to follow the beatmap at the same time the song begins
-    - Characters send their 'beats' (beatmap inputs) to the instance to be graded on accuracy (in relation to when client started the song, not when server did)
-    - Instance then updates characters mana and mana rate based on accuracy
-      - Perfect/Marvelous: ±16-33ms (most strict) (+1 mana rate)
-      - Great/Perfect: ±50-66ms
-      - Good: ±100-116ms
-      - Bad/OK: ±150-166ms (-1 mana rate)
-      - Miss: Outside of ±150-200ms (-1 mana rate)
-11. InstanceMobs then begin to spawn per Instance and Mob rules (instanceMobService)
-    - Mobs move forward at a set rate (reducing distance to player)
-    - If mobs reach player, they apply their damage every 2 seconds
-12. Client will monitor the state of active skills and mana, firing skills off when possible. IE if their priority 1 skill is off cooldown, they have enough mana, attempt to cast the skill with the instanceService
-    - Instance service verifies they can cast the skill
-      - Meets mana requirements
-      - now() - skill.lastCast > skill.cooldown
-    - Updates player mana and skill lastCast
-    - Applies skill damage to the mob that best satisfies the skills targetPriority (ie applies 5 damage to mob with lowest distance if targetPriority was closest)
-    - Grants player mana core the experience for the damage (damage x active mob xp)
-13. Instance continues until song is completed or all players are dead
-
-## Vision
-
-- Players can create magical characters
-- The only way to grow in power is to slay magical beasts for experience and loot
-- The only way to generate mana is by staying on the beat
-- Characters can cultivate affinities with different music generes
-- Characters can group up in parties and join instances together
-- Instances are a 'DDR esque' game where characters must all complete the same Song sequence to the best of their ability, using their generated mana and casted skills to stay alive
-- Staying alive awards players with experience, loot, and high scores to grow more powerful and take on harder areas and harder songs.
+- Generate mana by hitting beats; spend mana on skills to survive and progress.
+- Co-op parties run song-based instances; accuracy drives combat outcomes.
+- Progression via XP, difficulty, and content unlocks.
 
 ## Comprehensive MVP Spec (LLM-executable)
 
@@ -207,6 +80,211 @@ Notes
 
 - IDs are UUIDs; timestamps use createdAt/updatedAt.
 - Index all foreign keys and frequently filtered fields.
+
+#### Reference Prisma schema (MVP)
+
+```prisma
+// Enums
+enum Direction {
+  Up
+  Down
+  Left
+  Right
+}
+
+enum TargetPriority {
+  Closest
+  HighestHealth
+  LowestHealth
+  Furthest
+}
+
+enum PartyStatus {
+  Lobby
+  Ready
+  InInstance
+  Complete
+}
+
+enum InstanceStatus {
+  Pending
+  Active
+  Complete
+  Failed
+}
+
+enum MobStatus {
+  Alive
+  Dead
+}
+
+model Character {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  name      String
+  online    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id])
+  mana      Mana?
+  skills    Skill[]
+  members   PartyMember[]
+
+  @@index([userId])
+}
+
+model Mana {
+  id          String   @id @default(uuid()) @db.Uuid
+  characterId String   @unique @db.Uuid
+  current     Int      @default(0)
+  maximum     Int      @default(100)
+  experience  Int      @default(0)
+  rate        Int      @default(0)
+  maxRate     Int      @default(5)
+
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+}
+
+model Skill {
+  id            String         @id @default(uuid()) @db.Uuid
+  characterId   String         @db.Uuid
+  name          String
+  manaCost      Int
+  damage        Int
+  cooldownMs    Int
+  lastCastAt    DateTime?
+  mastery       Int            @default(0)
+  totalCasts    Int            @default(0)
+  priority      Int?
+  targetPriority TargetPriority
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  character     Character      @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, priority])
+  @@index([characterId])
+}
+
+model Genre {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  description String?
+  songs       Song[]
+}
+
+model Song {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  genreId   String   @db.Uuid
+  src       String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  genre     Genre    @relation(fields: [genreId], references: [id])
+  beats     SongBeat[]
+}
+
+model SongBeat {
+  id       String    @id @default(uuid()) @db.Uuid
+  songId   String    @db.Uuid
+  index    Int
+  timeMs   Int
+  direction Direction
+  holdMs   Int       @default(0)
+
+  song     Song      @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@unique([songId, index])
+  @@index([songId])
+}
+
+model Location {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  coordinates String?
+  image       String?
+  difficulty  Int
+  instances   Instance[]
+}
+
+model Mob {
+  id                 String   @id @default(uuid()) @db.Uuid
+  name               String
+  image              String?
+  healthBase         Int
+  healthMultiplier   Decimal
+  damageBase         Int
+  damageMultiplier   Decimal
+  xpBase             Int
+  xpMultiplier       Decimal
+  spawnRate          Float
+  spawnRateMultiplier Float
+  instanceMobs       InstanceMob[]
+}
+
+model Party {
+  id               String      @id @default(uuid()) @db.Uuid
+  hostCharacterId  String      @unique @db.Uuid
+  status           PartyStatus @default(Lobby)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  host             Character   @relation(fields: [hostCharacterId], references: [id])
+  members          PartyMember[]
+  instances        Instance[]
+}
+
+model PartyMember {
+  id           String    @id @default(uuid()) @db.Uuid
+  partyId      String    @db.Uuid
+  characterId  String    @unique @db.Uuid
+  isReady      Boolean   @default(false)
+
+  party        Party     @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  character    Character  @relation(fields: [characterId], references: [id])
+
+  @@unique([partyId, characterId])
+  @@index([partyId])
+}
+
+model Instance {
+  id          String         @id @default(uuid()) @db.Uuid
+  partyId     String         @db.Uuid
+  locationId  String         @db.Uuid
+  songId      String         @db.Uuid
+  status      InstanceStatus @default(Pending)
+  startedAt   DateTime?
+  endedAt     DateTime?
+
+  party       Party          @relation(fields: [partyId], references: [id])
+  location    Location       @relation(fields: [locationId], references: [id])
+  song        Song           @relation(fields: [songId], references: [id])
+  mobs        InstanceMob[]
+
+  @@index([partyId])
+  @@index([locationId])
+  @@index([songId])
+}
+
+model InstanceMob {
+  id            String     @id @default(uuid()) @db.Uuid
+  instanceId    String     @db.Uuid
+  mobId         String     @db.Uuid
+  healthCurrent Int
+  status        MobStatus  @default(Alive)
+  distance      Int
+  xpPerDamage   Int
+  damagePerHit  Int
+
+  instance      Instance   @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  mob           Mob        @relation(fields: [mobId], references: [id])
+
+  @@index([instanceId])
+  @@index([mobId])
+}
+```
 
 ### Services and Public Methods (MVP)
 
