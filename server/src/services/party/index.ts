@@ -114,7 +114,10 @@ export default class PartyService extends BaseService<
         update: { partyId },
         create: { partyId, characterId },
       });
-      const snap = (await this.getSnapshot(partyId)) as unknown as Record<string, unknown>;
+      const snap = (await this.getSnapshot(partyId)) as unknown as Record<
+        string,
+        unknown
+      >;
       this.emitUpdate(partyId, snap);
       return this.exactResponse("joinParty", { id: partyId });
     }
@@ -138,7 +141,10 @@ export default class PartyService extends BaseService<
           }) => Promise<unknown>;
         }
       ).delete({ where: { characterId } });
-      const snap = (await this.getSnapshot(partyId)) as unknown as Record<string, unknown>;
+      const snap = (await this.getSnapshot(partyId)) as unknown as Record<
+        string,
+        unknown
+      >;
       this.emitUpdate(partyId, snap);
       return this.exactResponse("leaveParty", { id: partyId });
     }
@@ -164,7 +170,10 @@ export default class PartyService extends BaseService<
           }) => Promise<PrismaPartyMember>;
         }
       ).update({ where: { characterId }, data: { isReady } });
-      const snap = (await this.getSnapshot(partyId)) as unknown as Record<string, unknown>;
+      const snap = (await this.getSnapshot(partyId)) as unknown as Record<
+        string,
+        unknown
+      >;
       this.emitUpdate(partyId, snap);
       return this.exactResponse("setReady", { partyId, characterId, isReady });
     }

@@ -403,7 +403,9 @@ export type SongServiceMethods = {
   };
   getSongBeats: {
     payload: { songId: string };
-    response: Array<Pick<SongBeat, "index" | "timeMs" | "direction" | "holdMs">>;
+    response: Array<
+      Pick<SongBeat, "index" | "timeMs" | "direction" | "holdMs">
+    >;
   };
 };
 

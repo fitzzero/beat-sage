@@ -37,11 +37,10 @@ describe("PartyService integration", () => {
       { name: "GuestChar" }
     );
 
-    const party = await emitWithAck<{ hostCharacterId: string }, { id: string }>(
-      clientA,
-      "partyService:createParty",
-      { hostCharacterId: host.id }
-    );
+    const party = await emitWithAck<
+      { hostCharacterId: string },
+      { id: string }
+    >(clientA, "partyService:createParty", { hostCharacterId: host.id });
 
     // Join as B
     await emitWithAck<{ partyId: string; characterId: string }, { id: string }>(
@@ -64,12 +63,14 @@ describe("PartyService integration", () => {
 
     // Give DB a tick, then subscribe snapshot
     await new Promise((r) => setTimeout(r, 10));
-    
-    const snap1 = await emitWithAck<{ partyId: string }, { hostCharacterId: string; members: Array<{ characterId: string; isReady: boolean }> }>(
-      clientA,
-      "partyService:subscribeWithMembers",
-      { partyId: party.id }
-    );
+
+    const snap1 = await emitWithAck<
+      { partyId: string },
+      {
+        hostCharacterId: string;
+        members: Array<{ characterId: string; isReady: boolean }>;
+      }
+    >(clientA, "partyService:subscribeWithMembers", { partyId: party.id });
     expect(snap1.hostCharacterId).toBe(host.id);
     expect(snap1.members.find((m) => m.characterId === host.id)).toBeTruthy();
     expect(snap1.members.find((m) => m.characterId === other.id)).toBeTruthy();
@@ -78,7 +79,11 @@ describe("PartyService integration", () => {
     const set = await emitWithAck<
       { partyId: string; characterId: string; isReady: boolean },
       { partyId: string; characterId: string; isReady: boolean }
-    >(clientB, "partyService:setReady", { partyId: party.id, characterId: other.id, isReady: true });
+    >(clientB, "partyService:setReady", {
+      partyId: party.id,
+      characterId: other.id,
+      isReady: true,
+    });
     expect(set.isReady).toBe(true);
 
     // Leave party
@@ -87,16 +92,18 @@ describe("PartyService integration", () => {
       "partyService:leaveParty",
       { partyId: party.id, characterId: other.id }
     );
-    const snap2 = await emitWithAck<{ partyId: string }, { hostCharacterId: string; members: Array<{ characterId: string; isReady: boolean }> }>(
-      clientA,
-      "partyService:subscribeWithMembers",
-      { partyId: party.id }
-    );
-    expect(snap2.members.find((m) => m.characterId === other.id)).toBeUndefined();
+    const snap2 = await emitWithAck<
+      { partyId: string },
+      {
+        hostCharacterId: string;
+        members: Array<{ characterId: string; isReady: boolean }>;
+      }
+    >(clientA, "partyService:subscribeWithMembers", { partyId: party.id });
+    expect(
+      snap2.members.find((m) => m.characterId === other.id)
+    ).toBeUndefined();
 
     clientA.close();
     clientB.close();
   });
 });
-
-
