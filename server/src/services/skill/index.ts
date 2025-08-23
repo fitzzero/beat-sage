@@ -29,11 +29,14 @@ export default class SkillService extends BaseService<
           }) => Promise<{ userId: string } | null>;
         }
       ).findUnique({ where: { id: characterId }, select: { userId: true } });
-      if (!owner || owner.userId !== socket.userId) return this.exactResponse("listMySkills", []);
+      if (!owner || owner.userId !== socket.userId)
+        return this.exactResponse("listMySkills", []);
 
       const rows = await (
         this.delegate as unknown as {
-          findMany: (args: { where: { characterId: string } }) => Promise<PrismaSkill[]>;
+          findMany: (args: {
+            where: { characterId: string };
+          }) => Promise<PrismaSkill[]>;
         }
       ).findMany({ where: { characterId } });
       return this.exactResponse("listMySkills", rows);
@@ -45,7 +48,8 @@ export default class SkillService extends BaseService<
     "Moderate",
     async (payload) => {
       const id = (payload as { id: string }).id;
-      const patch = (payload as { patch: Prisma.SkillUncheckedUpdateInput }).patch;
+      const patch = (payload as { patch: Prisma.SkillUncheckedUpdateInput })
+        .patch;
       const updated = await this.update(id, patch);
       return this.exactResponse("updateSkill", updated);
     },
@@ -77,5 +81,3 @@ export default class SkillService extends BaseService<
     }
   }
 }
-
-

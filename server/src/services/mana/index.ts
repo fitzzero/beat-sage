@@ -33,7 +33,8 @@ export default class ManaService extends BaseService<
     if (!allowed) return null;
 
     // Register subscription keyed by characterId
-    if (!this.subscribers.has(entryId)) this.subscribers.set(entryId, new Set());
+    if (!this.subscribers.has(entryId))
+      this.subscribers.set(entryId, new Set());
     this.subscribers.get(entryId)!.add(socket);
 
     // Return current mana state for the character
@@ -81,5 +82,3 @@ export default class ManaService extends BaseService<
     });
   }
 }
-
-

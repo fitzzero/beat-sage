@@ -23,7 +23,8 @@ describe("SongService integration", () => {
 
   it("listSongs filters by genre and paginates; getSongBeats returns beats", async () => {
     const { regularAId } = await seedUsers();
-    const genre = await testPrisma.genre.create({ data: { name: "Electronic" } });
+    const uniqueName = `Electronic-${Math.random().toString(36).slice(2, 8)}`;
+    const genre = await testPrisma.genre.create({ data: { name: uniqueName } });
     const song = await testPrisma.song.create({
       data: { name: "Demo Electro", genreId: genre.id, src: "/songs/demo.mp3" },
     });
