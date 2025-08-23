@@ -39,7 +39,11 @@ export default class CharacterService extends BaseService<
     "updateCharacter",
     "Moderate",
     async (payload, socket) => {
-      await this.ensureAccessForMethod("Moderate", socket, (payload as { id: string }).id);
+      await this.ensureAccessForMethod(
+        "Moderate",
+        socket,
+        (payload as { id: string }).id
+      );
       const updated = await this.update(
         (payload as { id: string }).id,
         (payload as { patch: Prisma.CharacterUncheckedUpdateInput }).patch
@@ -54,8 +58,13 @@ export default class CharacterService extends BaseService<
     "Read",
     async (payload, socket) => {
       if (!socket.userId) throw new Error("Authentication required");
-      const page = Math.max(1, Math.floor(((payload as { page?: number }).page ?? 1)));
-      const pageSizeRaw = Math.floor(((payload as { pageSize?: number }).pageSize ?? 25));
+      const page = Math.max(
+        1,
+        Math.floor((payload as { page?: number }).page ?? 1)
+      );
+      const pageSizeRaw = Math.floor(
+        (payload as { pageSize?: number }).pageSize ?? 25
+      );
       const pageSize = Math.min(Math.max(pageSizeRaw, 1), 100);
       const skip = (page - 1) * pageSize;
       const rows = await (
