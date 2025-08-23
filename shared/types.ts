@@ -413,3 +413,31 @@ export type LocationServiceMethods = {
     response: Array<Pick<Location, "id" | "name" | "difficulty">>;
   };
 };
+
+export type PartySnapshot = {
+  hostCharacterId: string;
+  members: Array<{ characterId: string; isReady: boolean }>;
+};
+
+export type PartyServiceMethods = {
+  createParty: {
+    payload: { hostCharacterId: string };
+    response: { id: string };
+  };
+  joinParty: {
+    payload: { partyId: string; characterId: string };
+    response: { id: string };
+  };
+  leaveParty: {
+    payload: { partyId: string; characterId: string };
+    response: { id: string };
+  };
+  setReady: {
+    payload: { partyId: string; characterId: string; isReady: boolean };
+    response: { partyId: string; characterId: string; isReady: boolean };
+  };
+  subscribeWithMembers: {
+    payload: { partyId: string };
+    response: PartySnapshot;
+  };
+};
