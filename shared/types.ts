@@ -368,3 +368,48 @@ export type CharacterServiceMethods = {
     response: Character[];
   };
 };
+
+export type SkillServiceMethods = {
+  listMySkills: {
+    payload: { characterId: string };
+    response: Skill[];
+  };
+  updateSkill: {
+    payload: {
+      id: string;
+      patch: {
+        priority?: number | null;
+        name?: string;
+        manaCost?: number;
+        damage?: number;
+        cooldownMs?: number;
+      };
+    };
+    response: Skill | undefined;
+  };
+};
+
+export type GenreServiceMethods = {
+  listAll: {
+    payload: Record<string, never>;
+    response: Array<Pick<Genre, "id" | "name" | "description">>;
+  };
+};
+
+export type SongServiceMethods = {
+  listSongs: {
+    payload: { genreId?: string; page?: number; pageSize?: number };
+    response: Array<Pick<Song, "id" | "name" | "genreId">>;
+  };
+  getSongBeats: {
+    payload: { songId: string };
+    response: Array<Pick<SongBeat, "index" | "timeMs" | "direction" | "holdMs">>;
+  };
+};
+
+export type LocationServiceMethods = {
+  listLocations: {
+    payload: { page?: number; pageSize?: number };
+    response: Array<Pick<Location, "id" | "name" | "difficulty">>;
+  };
+};

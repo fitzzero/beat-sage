@@ -10,6 +10,11 @@ import ChatService from "../../services/chat";
 import MessageService from "../../services/message";
 import MemoryService from "../../services/memory";
 import CharacterService from "../../services/character";
+import ManaService from "../../services/mana";
+import SkillService from "../../services/skill";
+import GenreService from "../../services/genre";
+import SongService from "../../services/song";
+import LocationService from "../../services/location";
 // Pruned non-core services for Beat Sage
 import { authenticateSocket } from "../../middleware/auth";
 
@@ -69,6 +74,16 @@ export async function startTestServer(overrides?: {
   serviceRegistry.registerService("memoryService", memoryService);
   const characterService = new CharacterService();
   serviceRegistry.registerService("characterService", characterService);
+  const manaService = new ManaService();
+  serviceRegistry.registerService("manaService", manaService);
+  const skillService = new SkillService();
+  serviceRegistry.registerService("skillService", skillService);
+  const genreService = new GenreService();
+  serviceRegistry.registerService("genreService", genreService);
+  const songService = new SongService();
+  serviceRegistry.registerService("songService", songService);
+  const locationService = new LocationService();
+  serviceRegistry.registerService("locationService", locationService);
   // pruned service registrations
 
   // Pick an ephemeral port
