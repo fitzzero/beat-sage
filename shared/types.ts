@@ -9,8 +9,41 @@ import type {
   Chat,
   Message,
   Memory,
+  Character,
+  Mana,
+  Skill,
+  Genre,
+  Song,
+  SongBeat,
+  Location,
+  Mob,
+  Party,
+  PartyMember,
+  Instance,
+  InstanceMob,
 } from "@prisma/client";
-export type { User, Account, Session, Model, Agent, Chat, Message, Memory };
+export type {
+  User,
+  Account,
+  Session,
+  Model,
+  Agent,
+  Chat,
+  Message,
+  Memory,
+  Character,
+  Mana,
+  Skill,
+  Genre,
+  Song,
+  SongBeat,
+  Location,
+  Mob,
+  Party,
+  PartyMember,
+  Instance,
+  InstanceMob,
+};
 
 // Generic service response envelope used by socket method acks
 export type ServiceResponse<T = unknown> =
@@ -317,4 +350,21 @@ export type MemoryDTO = Omit<
   updatedAt: string;
   lastAccessedAt?: string | null;
   related?: MemoryDTO[];
+};
+
+// ---- Beat Sage Services ----
+
+export type CharacterServiceMethods = {
+  createCharacter: {
+    payload: { name: string };
+    response: { id: string };
+  };
+  updateCharacter: {
+    payload: { id: string; patch: { name?: string; online?: boolean } };
+    response: Character | undefined;
+  };
+  listMine: {
+    payload: { page?: number; pageSize?: number };
+    response: Character[];
+  };
 };
