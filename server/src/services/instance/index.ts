@@ -378,10 +378,10 @@ export default class InstanceService extends BaseService<
   );
 
   // Allow host or any party member to Read/Moderate the instance
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   protected async evaluateEntryAccess(
     userId: string,
     entryId: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     requiredLevel: "Public" | "Read" | "Moderate" | "Admin",
     _socket: CustomSocket
   ): Promise<boolean> {
