@@ -90,4 +90,31 @@ describe("InstanceService integration", () => {
     clientA.close();
     clientB.close();
   });
+
+  it("attemptBeat updates in-memory mana and returns grading deltas", async () => {
+    const { regularAId } = await seedUsers();
+    const server = await startTestServer();
+    const portLocal = server.port;
+    const clientA = await connectAsUser(portLocal, regularAId);
+
+    const genre = await testPrisma.genre.create({ data: { name: `G-${Math.random().toString(36).slice(2, 6)}` } });
+    const song = await testPrisma.song.create({ data: { name: "Song2", genreId: genre.id, src: "/songs/2.mp3" } });
+    const loc = await testPrisma.location.create({ data: { name: "Arena2", difficulty: 1 } });
+
+    const host = await emitWithAck<{ name: string }, { id: string }>(clientA, "characterService:createCharacter", { name: "Host2" });
+    const party = await emitWithAck<{ hostCharacterId: string }, { id: string }>(clientA, "partyService:createParty", { hostCharacterId: host.id });
+    const created = await emitWithAck<
+      { partyId: string; locationId: string; songId: string },
+      { id: string; status: string }
+    >(clientA, "instanceService:createInstance", { partyId: party.id, locationId: loc.id, songId: song.id });
+
+    const result = await emitWithAck<
+      { id: string; characterId: string; clientBeatTimeMs: number },
+      { grade: string; manaDelta: number; rateDelta: number }
+    >(clientA, "instanceService:attemptBeat", { id: created.id, characterId: host.id, clientBeatTimeMs: Date.now() });
+    expect(["Perfect", "Great", "Good", "Bad", "Miss"]).toContain(result.grade);
+
+    clientA.close();
+    await server.stop();
+  });
 });

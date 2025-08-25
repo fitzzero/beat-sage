@@ -451,11 +451,27 @@ export type InstanceSnapshot = {
   locationId: string;
   mobs: InstanceMob[];
   party: { memberIds: string[] };
+  membersMana?: Array<{
+    characterId: string;
+    current: number;
+    maximum: number;
+    rate: number;
+    maxRate: number;
+    experience: number;
+  }>;
 };
 
 export type InstanceServiceMethods = {
   createInstance: {
     payload: { partyId: string; locationId: string; songId: string };
     response: { id: string; status: Instance["status"] };
+  };
+  attemptBeat: {
+    payload: { id: string; characterId: string; clientBeatTimeMs: number };
+    response: {
+      grade: "Perfect" | "Great" | "Good" | "Bad" | "Miss";
+      manaDelta: number;
+      rateDelta: number;
+    };
   };
 };

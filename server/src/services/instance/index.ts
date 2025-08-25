@@ -11,6 +11,16 @@ type ActiveInstance = {
   id: string;
   snapshot: InstanceSnapshot;
   subscribers: Set<CustomSocket>;
+  membersMana: Map<
+    string,
+    {
+      current: number;
+      maximum: number;
+      rate: number;
+      maxRate: number;
+      experience: number;
+    }
+  >; // characterId -> mana state (in-memory during Active)
 };
 
 export default class InstanceService extends BaseService<
@@ -78,6 +88,7 @@ export default class InstanceService extends BaseService<
         id,
         snapshot,
         subscribers: new Set<CustomSocket>(),
+        membersMana: new Map(),
       };
       /* eslint-enable @typescript-eslint/no-unsafe-assignment */
       this.active.set(id, value);
@@ -240,12 +251,174 @@ export default class InstanceService extends BaseService<
   private emitInstanceSnapshot(id: string) {
     const rec = this.active.get(id);
     if (!rec) return;
-    const payload = rec.snapshot as unknown as Record<string, unknown>;
+    const membersManaArr = Array.from(rec.membersMana.entries()).map(
+      ([characterId, m]) => ({ characterId, ...m })
+    );
+    const payload = {
+      ...rec.snapshot,
+      membersMana: membersManaArr,
+    } as unknown as Record<string, unknown>;
     this.subscribers.get(id)?.forEach((s) => {
       s.emit(`${this.serviceName}:update:${id}`, payload);
     });
     rec.subscribers.forEach((s) => {
       s.emit(`${this.serviceName}:update:${id}`, payload);
     });
+  }
+
+  // --- Stage 5: attemptBeat grading ---
+  public attemptBeat = this.defineMethod(
+    "attemptBeat",
+    "Read",
+    async (payload, socket) => {
+      if (!socket.userId) throw new Error("Authentication required");
+      const { id, characterId, clientBeatTimeMs } = payload as {
+        id: string;
+        characterId: string;
+        clientBeatTimeMs: number;
+      };
+
+      // Ensure subscription exists (implies access) and active record is present
+      if (!this.active.has(id)) {
+        const exists = await (
+          this.delegate as unknown as {
+            findUnique: (args: {
+              where: { id: string };
+              select: { id: boolean };
+            }) => Promise<{ id: string } | null>;
+          }
+        ).findUnique({ where: { id }, select: { id: true } });
+        if (!exists) throw new Error("Instance not found");
+        // Initialize snapshot if missing
+        const inst = (await (
+          this.delegate as unknown as {
+            findUnique: (args: {
+              where: { id: string };
+              select: {
+                id: boolean;
+                partyId: boolean;
+                songId: boolean;
+                locationId: boolean;
+                status: boolean;
+                startedAt: boolean;
+              };
+            }) => Promise<{
+              id: string;
+              partyId: string;
+              songId: string;
+              locationId: string;
+              status: PrismaInstance["status"];
+              startedAt: Date | null;
+            } | null>;
+          }
+        ).findUnique({
+          where: { id },
+          select: {
+            id: true,
+            partyId: true,
+            songId: true,
+            locationId: true,
+            status: true,
+            startedAt: true,
+          },
+        })) as {
+          id: string;
+          partyId: string;
+          songId: string;
+          locationId: string;
+          status: PrismaInstance["status"];
+          startedAt: Date | null;
+        };
+        /* eslint-disable @typescript-eslint/no-unsafe-assignment */
+        const snap: InstanceSnapshot = await this.buildSnapshot(inst);
+        /* eslint-enable @typescript-eslint/no-unsafe-assignment */
+        this.ensureActiveRecord(id, snap);
+      }
+      const rec = this.active.get(id)!;
+
+      // Grade timing window (simple placeholder; server authoritative)
+      const nowMs = Date.now();
+      const delta = Math.abs(nowMs - clientBeatTimeMs);
+      let grade: "Perfect" | "Great" | "Good" | "Bad" | "Miss" = "Miss";
+      if (delta <= 33) grade = "Perfect";
+      else if (delta <= 66) grade = "Great";
+      else if (delta <= 116) grade = "Good";
+      else if (delta <= 166) grade = "Bad";
+
+      // Mana adjustments based on grade
+      const current = rec.membersMana.get(characterId) || {
+        current: 0,
+        maximum: 100,
+        rate: 0,
+        maxRate: 5,
+        experience: 0,
+      };
+      let rateDelta = 0;
+      if (grade === "Perfect") rateDelta = 1;
+      else if (grade === "Bad" || grade === "Miss") rateDelta = -1;
+      const nextRate = Math.max(
+        0,
+        Math.min(current.maxRate, current.rate + rateDelta)
+      );
+      // Mana delta proportional to rate change; clamp to [0, maximum]
+      const manaDelta = Math.sign(rateDelta) * 1; // simple placeholder
+      const nextCurrent = Math.max(
+        0,
+        Math.min(current.maximum, current.current + manaDelta)
+      );
+      const updated = { ...current, rate: nextRate, current: nextCurrent };
+      rec.membersMana.set(characterId, updated);
+
+      // Emit snapshot update (coalesced with tick; for now emit immediately)
+      this.emitInstanceSnapshot(id);
+
+      return this.exactResponse("attemptBeat", { grade, manaDelta, rateDelta });
+    },
+    { resolveEntryId: (p) => (p as { id: string }).id }
+  );
+
+  // Allow host or any party member to Read/Moderate the instance
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected async evaluateEntryAccess(
+    userId: string,
+    entryId: string,
+    requiredLevel: "Public" | "Read" | "Moderate" | "Admin",
+    _socket: CustomSocket
+  ): Promise<boolean> {
+    try {
+      const inst = await (
+        this.delegate as unknown as {
+          findUnique: (args: {
+            where: { id: string };
+            select: { partyId: boolean };
+          }) => Promise<{ partyId: string } | null>;
+        }
+      ).findUnique({ where: { id: entryId }, select: { partyId: true } });
+      if (!inst) return false;
+      // host owner check
+      const host = await (
+        this.db["party"] as unknown as {
+          findUnique: (args: {
+            where: { id: string };
+            select: { host: { select: { userId: boolean } } };
+          }) => Promise<{ host: { userId: string } } | null>;
+        }
+      ).findUnique({
+        where: { id: inst.partyId },
+        select: { host: { select: { userId: true } } },
+      });
+      if (host?.host.userId === userId) return true;
+      // member check
+      const member = await (
+        this.db["partyMember"] as unknown as {
+          findFirst: (args: {
+            where: { partyId: string; character: { userId: string } };
+          }) => Promise<{ id: string } | null>;
+        }
+      ).findFirst({ where: { partyId: inst.partyId, character: { userId } } });
+      return !!member;
+    } catch {
+      return false;
+    }
   }
 }
