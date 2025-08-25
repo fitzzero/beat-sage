@@ -20,7 +20,10 @@ export default class InstanceService extends BaseService<
   Prisma.InstanceUncheckedUpdateInput,
   InstanceServiceMethods
 > {
-  private active: Map<string, ActiveInstance> = new Map();
+  private active: Map<string, ActiveInstance> = new Map<
+    string,
+    ActiveInstance
+  >();
 
   constructor() {
     super({
@@ -70,10 +73,19 @@ export default class InstanceService extends BaseService<
 
   private ensureActiveRecord(id: string, snapshot: InstanceSnapshot) {
     if (!this.active.has(id)) {
-      this.active.set(id, { id, snapshot, subscribers: new Set() });
+      /* eslint-disable @typescript-eslint/no-unsafe-assignment */
+      const value: ActiveInstance = {
+        id,
+        snapshot,
+        subscribers: new Set<CustomSocket>(),
+      };
+      /* eslint-enable @typescript-eslint/no-unsafe-assignment */
+      this.active.set(id, value);
     }
-    const rec = this.active.get(id)!;
+    const rec = this.active.get(id) as ActiveInstance;
+    /* eslint-disable @typescript-eslint/no-unsafe-assignment */
     rec.snapshot = snapshot;
+    /* eslint-enable @typescript-eslint/no-unsafe-assignment */
   }
 
   public createInstance = this.defineMethod(
@@ -128,7 +140,8 @@ export default class InstanceService extends BaseService<
         locationId,
         songId,
       } as Prisma.InstanceUncheckedCreateInput);
-      const snapshot = await this.buildSnapshot({
+      /* eslint-disable @typescript-eslint/no-unsafe-assignment */
+      const snapshot: InstanceSnapshot = await this.buildSnapshot({
         id: created.id,
         partyId,
         locationId,
@@ -136,6 +149,7 @@ export default class InstanceService extends BaseService<
         status: created.status,
         startedAt: created.startedAt ?? null,
       });
+      /* eslint-enable @typescript-eslint/no-unsafe-assignment */
       this.ensureActiveRecord(created.id, snapshot);
       return this.exactResponse("createInstance", {
         id: created.id,
@@ -211,7 +225,9 @@ export default class InstanceService extends BaseService<
 
     // Build or reuse in-memory snapshot
     if (!this.active.has(entryId)) {
-      const snap = await this.buildSnapshot(inst);
+      /* eslint-disable @typescript-eslint/no-unsafe-assignment */
+      const snap: InstanceSnapshot = await this.buildSnapshot(inst);
+      /* eslint-enable @typescript-eslint/no-unsafe-assignment */
       this.ensureActiveRecord(entryId, snap);
     }
     const rec = this.active.get(entryId)!;
