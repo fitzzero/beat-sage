@@ -16,6 +16,7 @@ import GenreService from "../../services/genre";
 import SongService from "../../services/song";
 import LocationService from "../../services/location";
 import PartyService from "../../services/party";
+import InstanceService from "../../services/instance";
 // Pruned non-core services for Beat Sage
 import { authenticateSocket } from "../../middleware/auth";
 
@@ -87,6 +88,8 @@ export async function startTestServer(overrides?: {
   serviceRegistry.registerService("locationService", locationService);
   const partyService = new PartyService();
   serviceRegistry.registerService("partyService", partyService);
+  const instanceService = new InstanceService();
+  serviceRegistry.registerService("instanceService", instanceService);
   // pruned service registrations
 
   // Pick an ephemeral port

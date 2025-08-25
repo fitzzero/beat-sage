@@ -443,3 +443,19 @@ export type PartyServiceMethods = {
     response: PartySnapshot;
   };
 };
+
+export type InstanceSnapshot = {
+  status: Instance["status"];
+  startedAt?: Date | null;
+  songId: string;
+  locationId: string;
+  mobs: InstanceMob[];
+  party: { memberIds: string[] };
+};
+
+export type InstanceServiceMethods = {
+  createInstance: {
+    payload: { partyId: string; locationId: string; songId: string };
+    response: { id: string; status: Instance["status"] };
+  };
+};
