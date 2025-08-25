@@ -466,6 +466,14 @@ export type InstanceServiceMethods = {
     payload: { partyId: string; locationId: string; songId: string };
     response: { id: string; status: Instance["status"] };
   };
+  startInstance: {
+    payload: { id: string };
+    response: {
+      id: string;
+      status: Instance["status"];
+      startedAt?: Date | null;
+    };
+  };
   attemptBeat: {
     payload: { id: string; characterId: string; clientBeatTimeMs: number };
     response: {

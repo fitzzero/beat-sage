@@ -97,22 +97,86 @@ describe("InstanceService integration", () => {
     const portLocal = server.port;
     const clientA = await connectAsUser(portLocal, regularAId);
 
-    const genre = await testPrisma.genre.create({ data: { name: `G-${Math.random().toString(36).slice(2, 6)}` } });
-    const song = await testPrisma.song.create({ data: { name: "Song2", genreId: genre.id, src: "/songs/2.mp3" } });
-    const loc = await testPrisma.location.create({ data: { name: "Arena2", difficulty: 1 } });
+    const genre = await testPrisma.genre.create({
+      data: { name: `G-${Math.random().toString(36).slice(2, 6)}` },
+    });
+    const song = await testPrisma.song.create({
+      data: { name: "Song2", genreId: genre.id, src: "/songs/2.mp3" },
+    });
+    const loc = await testPrisma.location.create({
+      data: { name: "Arena2", difficulty: 1 },
+    });
 
-    const host = await emitWithAck<{ name: string }, { id: string }>(clientA, "characterService:createCharacter", { name: "Host2" });
-    const party = await emitWithAck<{ hostCharacterId: string }, { id: string }>(clientA, "partyService:createParty", { hostCharacterId: host.id });
+    const host = await emitWithAck<{ name: string }, { id: string }>(
+      clientA,
+      "characterService:createCharacter",
+      { name: "Host2" }
+    );
+    const party = await emitWithAck<
+      { hostCharacterId: string },
+      { id: string }
+    >(clientA, "partyService:createParty", { hostCharacterId: host.id });
     const created = await emitWithAck<
       { partyId: string; locationId: string; songId: string },
       { id: string; status: string }
-    >(clientA, "instanceService:createInstance", { partyId: party.id, locationId: loc.id, songId: song.id });
+    >(clientA, "instanceService:createInstance", {
+      partyId: party.id,
+      locationId: loc.id,
+      songId: song.id,
+    });
 
     const result = await emitWithAck<
       { id: string; characterId: string; clientBeatTimeMs: number },
       { grade: string; manaDelta: number; rateDelta: number }
-    >(clientA, "instanceService:attemptBeat", { id: created.id, characterId: host.id, clientBeatTimeMs: Date.now() });
+    >(clientA, "instanceService:attemptBeat", {
+      id: created.id,
+      characterId: host.id,
+      clientBeatTimeMs: Date.now(),
+    });
     expect(["Perfect", "Great", "Good", "Bad", "Miss"]).toContain(result.grade);
+
+    clientA.close();
+    await server.stop();
+  });
+
+  it("startInstance transitions to Active and begins ticking", async () => {
+    const { regularAId } = await seedUsers();
+    const server = await startTestServer();
+    const portLocal = server.port;
+    const clientA = await connectAsUser(portLocal, regularAId);
+
+    const genre = await testPrisma.genre.create({
+      data: { name: `G-${Math.random().toString(36).slice(2, 6)}` },
+    });
+    const song = await testPrisma.song.create({
+      data: { name: "Song3", genreId: genre.id, src: "/songs/3.mp3" },
+    });
+    const loc = await testPrisma.location.create({
+      data: { name: "Arena3", difficulty: 1 },
+    });
+    const host = await emitWithAck<{ name: string }, { id: string }>(
+      clientA,
+      "characterService:createCharacter",
+      { name: "Host3" }
+    );
+    const party = await emitWithAck<
+      { hostCharacterId: string },
+      { id: string }
+    >(clientA, "partyService:createParty", { hostCharacterId: host.id });
+    const created = await emitWithAck<
+      { partyId: string; locationId: string; songId: string },
+      { id: string; status: string }
+    >(clientA, "instanceService:createInstance", {
+      partyId: party.id,
+      locationId: loc.id,
+      songId: song.id,
+    });
+
+    const started = await emitWithAck<
+      { id: string },
+      { id: string; status: string }
+    >(clientA, "instanceService:startInstance", { id: created.id });
+    expect(started.status).toBe("Active");
 
     clientA.close();
     await server.stop();

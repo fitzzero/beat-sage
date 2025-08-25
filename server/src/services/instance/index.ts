@@ -1,11 +1,14 @@
 import BaseService from "../../core/baseService";
 import type { CustomSocket } from "../../core/baseService";
-import type {
-  Prisma,
-  Instance as PrismaInstance,
-  InstanceMob as PrismaInstanceMob,
-} from "@prisma/client";
+import type { Prisma, Instance as PrismaInstance } from "@prisma/client";
 import type { InstanceServiceMethods, InstanceSnapshot } from "@shared/types";
+import { gradeBeat } from "./logic/grading";
+import {
+  advanceMobs,
+  applyContactDamage as _applyContactDamage,
+} from "./logic/tick";
+import { canAccessInstance } from "./acl";
+import { buildInstanceSnapshot } from "./snapshot";
 
 type ActiveInstance = {
   id: string;
@@ -21,6 +24,7 @@ type ActiveInstance = {
       experience: number;
     }
   >; // characterId -> mana state (in-memory during Active)
+  ticker?: ReturnType<typeof setInterval> | null;
 };
 
 export default class InstanceService extends BaseService<
@@ -43,18 +47,6 @@ export default class InstanceService extends BaseService<
     });
   }
 
-  private async getPartyMemberIds(partyId: string): Promise<string[]> {
-    const rows = await (
-      this.db["partyMember"] as unknown as {
-        findMany: (args: {
-          where: { partyId: string };
-          select: { characterId: boolean };
-        }) => Promise<Array<{ characterId: string }>>;
-      }
-    ).findMany({ where: { partyId }, select: { characterId: true } });
-    return rows.map((r) => r.characterId);
-  }
-
   private async buildSnapshot(inst: {
     id: string;
     partyId: string;
@@ -63,22 +55,10 @@ export default class InstanceService extends BaseService<
     status: PrismaInstance["status"];
     startedAt: Date | null;
   }): Promise<InstanceSnapshot> {
-    const mobs = await (
-      this.db["instanceMob"] as unknown as {
-        findMany: (args: {
-          where: { instanceId: string };
-        }) => Promise<PrismaInstanceMob[]>;
-      }
-    ).findMany({ where: { instanceId: inst.id } });
-    const memberIds = await this.getPartyMemberIds(inst.partyId);
-    return {
-      status: inst.status,
-      startedAt: inst.startedAt,
-      songId: inst.songId,
-      locationId: inst.locationId,
-      mobs,
-      party: { memberIds },
-    };
+    return buildInstanceSnapshot(
+      this.db as unknown as Parameters<typeof buildInstanceSnapshot>[0],
+      inst as unknown as Parameters<typeof buildInstanceSnapshot>[1]
+    );
   }
 
   private ensureActiveRecord(id: string, snapshot: InstanceSnapshot) {
@@ -89,6 +69,7 @@ export default class InstanceService extends BaseService<
         snapshot,
         subscribers: new Set<CustomSocket>(),
         membersMana: new Map(),
+        ticker: null,
       };
       /* eslint-enable @typescript-eslint/no-unsafe-assignment */
       this.active.set(id, value);
@@ -243,6 +224,10 @@ export default class InstanceService extends BaseService<
     }
     const rec = this.active.get(entryId)!;
     rec.subscribers.add(socket);
+    if (!this.subscribers.has(entryId))
+      this.subscribers.set(entryId, new Set());
+    this.subscribers.get(entryId)!.add(socket);
+    this.startTickIfNeeded(entryId);
     // Return current snapshot
     return rec.snapshot as unknown as Record<string, unknown>;
   }
@@ -264,6 +249,62 @@ export default class InstanceService extends BaseService<
     rec.subscribers.forEach((s) => {
       s.emit(`${this.serviceName}:update:${id}`, payload);
     });
+    this.stopTickIfIdle(id);
+  }
+
+  private startTickIfNeeded(id: string) {
+    const rec = this.active.get(id);
+    if (!rec) return;
+    if (rec.ticker) return;
+    rec.ticker = setInterval(() => {
+      // Advance mobs via helper
+      const mobsAdvanced = advanceMobs(
+        (
+          rec.snapshot as unknown as {
+            mobs: Parameters<typeof advanceMobs>[0];
+          }
+        ).mobs
+      );
+      (rec.snapshot as unknown as { mobs: typeof mobsAdvanced }).mobs =
+        mobsAdvanced;
+
+      // Contact damage against the first member if any
+      const memberIds: string[] = (
+        rec.snapshot as unknown as { party: { memberIds: string[] } }
+      ).party.memberIds;
+      if (memberIds.length > 0) {
+        let anyDamage = false;
+        for (const mob of mobsAdvanced) {
+          if (mob.distance === 0 && mob.status === "Alive") {
+            const target: string = memberIds[0];
+            const mm = rec.membersMana.get(target) || {
+              current: 0,
+              maximum: 100,
+              rate: 0,
+              maxRate: 5,
+              experience: 0,
+            };
+            const dmg = Math.max(1, Math.floor(Number(mob.damagePerHit || 1)));
+            const next = { ...mm, current: Math.max(0, mm.current - dmg) };
+            rec.membersMana.set(target, next);
+            anyDamage = true;
+          }
+        }
+        if (anyDamage) this.emitInstanceSnapshot(id);
+      }
+      this.emitInstanceSnapshot(id);
+    }, 100);
+  }
+
+  private stopTickIfIdle(id: string) {
+    const rec = this.active.get(id);
+    if (!rec) return;
+    const hasBase = (this.subscribers.get(id)?.size || 0) > 0;
+    const hasLocal = rec.subscribers.size > 0;
+    if (!hasBase && !hasLocal && rec.ticker) {
+      clearInterval(rec.ticker);
+      rec.ticker = null;
+    }
   }
 
   // --- Stage 5: attemptBeat grading ---
@@ -336,14 +377,12 @@ export default class InstanceService extends BaseService<
       }
       const rec = this.active.get(id)!;
 
-      // Grade timing window (simple placeholder; server authoritative)
+      // Grade timing window using helper
       const nowMs = Date.now();
-      const delta = Math.abs(nowMs - clientBeatTimeMs);
-      let grade: "Perfect" | "Great" | "Good" | "Bad" | "Miss" = "Miss";
-      if (delta <= 33) grade = "Perfect";
-      else if (delta <= 66) grade = "Great";
-      else if (delta <= 116) grade = "Good";
-      else if (delta <= 166) grade = "Bad";
+      const { grade, rateDelta, manaDelta } = gradeBeat(
+        nowMs,
+        clientBeatTimeMs
+      );
 
       // Mana adjustments based on grade
       const current = rec.membersMana.get(characterId) || {
@@ -353,15 +392,10 @@ export default class InstanceService extends BaseService<
         maxRate: 5,
         experience: 0,
       };
-      let rateDelta = 0;
-      if (grade === "Perfect") rateDelta = 1;
-      else if (grade === "Bad" || grade === "Miss") rateDelta = -1;
       const nextRate = Math.max(
         0,
         Math.min(current.maxRate, current.rate + rateDelta)
       );
-      // Mana delta proportional to rate change; clamp to [0, maximum]
-      const manaDelta = Math.sign(rateDelta) * 1; // simple placeholder
       const nextCurrent = Math.max(
         0,
         Math.min(current.maximum, current.current + manaDelta)
@@ -377,6 +411,68 @@ export default class InstanceService extends BaseService<
     { resolveEntryId: (p) => (p as { id: string }).id }
   );
 
+  // Start the instance (Pending -> Active) and set startedAt
+  public startInstance = this.defineMethod(
+    "startInstance",
+    "Read",
+    async (payload, socket) => {
+      if (!socket.userId) throw new Error("Authentication required");
+      const id = (payload as { id: string }).id;
+      const updated = await this.update(id, {
+        status: "Active" as unknown as PrismaInstance["status"],
+        startedAt: new Date(),
+      } as Prisma.InstanceUncheckedUpdateInput);
+      // Ensure active record exists for ticking
+      const inst = await (
+        this.delegate as unknown as {
+          findUnique: (args: {
+            where: { id: string };
+            select: {
+              id: boolean;
+              partyId: boolean;
+              songId: boolean;
+              locationId: boolean;
+              status: boolean;
+              startedAt: boolean;
+            };
+          }) => Promise<{
+            id: string;
+            partyId: string;
+            songId: string;
+            locationId: string;
+            status: PrismaInstance["status"];
+            startedAt: Date | null;
+          } | null>;
+        }
+      ).findUnique({
+        where: { id },
+        select: {
+          id: true,
+          partyId: true,
+          songId: true,
+          locationId: true,
+          status: true,
+          startedAt: true,
+        },
+      });
+      if (inst && !this.active.has(id)) {
+        /* eslint-disable @typescript-eslint/no-unsafe-assignment */
+        const snap: InstanceSnapshot = await this.buildSnapshot(inst);
+        /* eslint-enable @typescript-eslint/no-unsafe-assignment */
+        this.ensureActiveRecord(id, snap);
+      }
+      this.startTickIfNeeded(id);
+      return this.exactResponse("startInstance", {
+        id,
+        status:
+          (updated as unknown as { status: PrismaInstance["status"] })
+            ?.status ?? "Active",
+        startedAt: new Date(),
+      });
+    },
+    { resolveEntryId: (p) => (p as { id: string }).id }
+  );
+
   // Allow host or any party member to Read/Moderate the instance
   protected async evaluateEntryAccess(
     userId: string,
@@ -386,37 +482,11 @@ export default class InstanceService extends BaseService<
     _socket: CustomSocket
   ): Promise<boolean> {
     try {
-      const inst = await (
-        this.delegate as unknown as {
-          findUnique: (args: {
-            where: { id: string };
-            select: { partyId: boolean };
-          }) => Promise<{ partyId: string } | null>;
-        }
-      ).findUnique({ where: { id: entryId }, select: { partyId: true } });
-      if (!inst) return false;
-      // host owner check
-      const host = await (
-        this.db["party"] as unknown as {
-          findUnique: (args: {
-            where: { id: string };
-            select: { host: { select: { userId: boolean } } };
-          }) => Promise<{ host: { userId: string } } | null>;
-        }
-      ).findUnique({
-        where: { id: inst.partyId },
-        select: { host: { select: { userId: true } } },
-      });
-      if (host?.host.userId === userId) return true;
-      // member check
-      const member = await (
-        this.db["partyMember"] as unknown as {
-          findFirst: (args: {
-            where: { partyId: string; character: { userId: string } };
-          }) => Promise<{ id: string } | null>;
-        }
-      ).findFirst({ where: { partyId: inst.partyId, character: { userId } } });
-      return !!member;
+      return await canAccessInstance(
+        this.db as unknown as Parameters<typeof canAccessInstance>[0],
+        entryId,
+        userId
+      );
     } catch {
       return false;
     }
