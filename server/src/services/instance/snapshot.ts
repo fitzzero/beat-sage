@@ -1,20 +1,12 @@
 import type { InstanceSnapshot } from "@shared/types";
+import type { Instance, InstanceMob } from "@prisma/client";
 
 export async function buildInstanceSnapshot(
   prisma: {
     instanceMob: {
-      findMany: (args: { where: { instanceId: string } }) => Promise<
-        Array<{
-          id: string;
-          instanceId: string;
-          mobId: string;
-          healthCurrent: number;
-          status: "Alive" | "Dead";
-          distance: number;
-          xpPerDamage: number;
-          damagePerHit: number;
-        }>
-      >;
+      findMany: (args: {
+        where: { instanceId: string };
+      }) => Promise<Array<InstanceMob>>;
     };
     partyMember: {
       findMany: (args: {
@@ -23,14 +15,7 @@ export async function buildInstanceSnapshot(
       }) => Promise<Array<{ characterId: string }>>;
     };
   },
-  inst: {
-    id: string;
-    partyId: string;
-    locationId: string;
-    songId: string;
-    status: string;
-    startedAt: Date | null;
-  }
+  inst: Instance
 ): Promise<InstanceSnapshot> {
   const mobs = await prisma.instanceMob.findMany({
     where: { instanceId: inst.id },
@@ -41,7 +26,7 @@ export async function buildInstanceSnapshot(
   });
   const memberIds = members.map((r) => r.characterId);
   return {
-    status: inst.status as InstanceSnapshot["status"],
+    status: inst.status,
     startedAt: inst.startedAt,
     songId: inst.songId,
     locationId: inst.locationId,

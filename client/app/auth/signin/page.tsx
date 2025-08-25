@@ -47,7 +47,7 @@ export default function SignIn() {
         await getSession();
         router.push("/");
       }
-    } catch (err) {
+    } catch (_err) {
       setError("An unexpected error occurred");
     } finally {
       setLoading(false);
@@ -60,7 +60,7 @@ export default function SignIn() {
 
     try {
       await signIn("google", { callbackUrl: "/" });
-    } catch (err) {
+    } catch (_err) {
       setError("Google authentication failed");
       setLoading(false);
     }

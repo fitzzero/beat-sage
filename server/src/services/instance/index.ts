@@ -227,7 +227,10 @@ export default class InstanceService extends BaseService<
     if (!this.subscribers.has(entryId))
       this.subscribers.set(entryId, new Set());
     this.subscribers.get(entryId)!.add(socket);
-    this.startTickIfNeeded(entryId);
+    // Only start ticking if the instance is already Active
+    if ((rec.snapshot as unknown as { status: string }).status === "Active") {
+      this.startTickIfNeeded(entryId);
+    }
     // Return current snapshot
     return rec.snapshot as unknown as Record<string, unknown>;
   }
@@ -455,11 +458,22 @@ export default class InstanceService extends BaseService<
           startedAt: true,
         },
       });
-      if (inst && !this.active.has(id)) {
-        /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-        const snap: InstanceSnapshot = await this.buildSnapshot(inst);
-        /* eslint-enable @typescript-eslint/no-unsafe-assignment */
-        this.ensureActiveRecord(id, snap);
+      if (inst) {
+        if (!this.active.has(id)) {
+          /* eslint-disable @typescript-eslint/no-unsafe-assignment */
+          const snap: InstanceSnapshot = await this.buildSnapshot(inst);
+          /* eslint-enable @typescript-eslint/no-unsafe-assignment */
+          this.ensureActiveRecord(id, snap);
+        } else {
+          // Update existing in-memory snapshot to reflect Active state and startedAt
+          const rec = this.active.get(id)!;
+          (rec.snapshot as unknown as { status: string }).status = String(
+            inst.status
+          );
+          (rec.snapshot as unknown as { startedAt?: Date | null }).startedAt =
+            inst.startedAt ?? null;
+          this.emitInstanceSnapshot(id);
+        }
       }
       this.startTickIfNeeded(id);
       return this.exactResponse("startInstance", {

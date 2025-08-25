@@ -1,5 +1,3 @@
-import type { Prisma } from "@prisma/client";
-
 export async function canAccessInstance(
   prisma: {
     instance: {

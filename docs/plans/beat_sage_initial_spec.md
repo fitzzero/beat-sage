@@ -343,6 +343,19 @@ Access control
 
   - When all members ready, create Instance (Pending → Active), emit update with `syncStartAtMs` so clients align playback.
 
+#### Instance lifecycle (authoritative states)
+
+- Status values: `Pending` → `Active` → (`Complete` | `Failed`).
+- Transitions:
+  - Create sets `Pending` with `startedAt = null`.
+  - Start sets `Active` with `startedAt = now()` and begins fixed-tick emissions.
+  - End sets `Complete` or `Failed` and stops emissions except on lifecycle events.
+- Emission policy by state:
+
+  - `Pending`: emit on events only (subscribe, membership changes, admin updates).
+  - `Active`: emit snapshot on a fixed cadence (e.g., 10 TPS) and on important events (mob death, joins/leaves if allowed, casts).
+  - Terminal: emit final snapshot on transition, then quiescent.
+
 - Beat grading
 
   - Windows (tunable): Perfect ±33ms (+1 rate), Great ±66ms (0), Good ±116ms (0), Bad ±166ms (−1), Miss >200ms (−1).
@@ -374,6 +387,29 @@ Authoritative realtime model (implementation guidance)
 
   - Fixed TPS (e.g., 10) during Active; drop to onEvent for Pending/Complete.
   - On critical events (member join/leave, mob death), emit immediately in addition to cadence.
+
+#### Snapshot contract (stability and shape)
+
+- Contract is forward-compatible and stable for the MVP. Required keys:
+  - `status: Instance["status"]`
+  - `startedAt?: Date | null` (null while `Pending`; set once on `Active` and remains stable)
+  - `songId: string`
+  - `locationId: string`
+  - `mobs: InstanceMob[]` (authoritative per-tick state)
+  - `party: { memberIds: string[] }` (stable ordering not guaranteed)
+  - `membersMana?: Array<{ characterId: string; current: number; maximum: number; rate: number; maxRate: number; experience: number }>`
+- Stability guarantees during `Active`:
+  - `startedAt` does not change after first set.
+  - Keys remain present with consistent types across emissions.
+  - Additional optional fields may be appended in later stages, preserving existing keys.
+
+#### Structure & maintainability
+
+- Keep pure logic in `logic/` (e.g., `grading.ts`, `tick.ts`) and IO/stateful orchestration in `index.ts`.
+- Build initial snapshot via a dedicated `snapshot.ts` to centralize shape.
+- In-memory state is the source of truth during `Active`; throttle DB writes to lifecycle and periodic durability intervals.
+- Isolate ACL checks in `acl.ts`. Prefer service-level checks over row ACLs at MVP.
+- Emit through a single helper to ensure consistent fan-out and payload shape.
 
 - Write policy during loop
   - Update in-memory state every tick; do not call Prisma on every change.

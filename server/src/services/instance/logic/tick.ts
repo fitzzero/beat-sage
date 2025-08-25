@@ -1,13 +1,16 @@
-export type MobRow = {
-  id: string;
-  instanceId: string;
-  mobId: string;
-  healthCurrent: number;
-  status: "Alive" | "Dead";
-  distance: number;
-  xpPerDamage: number;
-  damagePerHit: number;
-};
+import type { InstanceMob } from "@prisma/client";
+
+export type MobRow = Pick<
+  InstanceMob,
+  | "id"
+  | "instanceId"
+  | "mobId"
+  | "healthCurrent"
+  | "status"
+  | "distance"
+  | "xpPerDamage"
+  | "damagePerHit"
+>;
 
 export function advanceMobs(mobs: MobRow[]): MobRow[] {
   return mobs.map((mob) => ({

@@ -105,7 +105,7 @@ export const authOptions: NextAuthOptions = {
             } else {
               token.id = existingUser.id;
             }
-          } catch (error) {
+          } catch (_error) {
             // In production, you'd want to log this to a proper logging service
             // console.error("Error handling OAuth user:", error);
             return token;
