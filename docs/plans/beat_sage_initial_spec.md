@@ -356,6 +356,30 @@ Access control
 - Persistence
   - Keep active state in memory for ticks; persist on key events and on end.
 
+Authoritative realtime model (implementation guidance)
+
+- Instance as source of truth while Active
+
+  - While `Instance.status = Active`, the authoritative combat state (mobs array, per-member battle stats like mana/rate/cooldowns) lives in memory inside `instanceService`.
+  - DB writes are throttled: write on lifecycle transitions (Pending→Active, mob death, end), and periodically (e.g., every 5–10s) for durability. Avoid per-tick DB writes.
+
+- Subscription strategy
+
+  - Single subscription: `instanceService:subscribe { id } → InstanceSnapshot`
+    - Snapshot includes: `{ status, startedAt, songId, locationId, mobs, party: { memberIds }, members?: Array<{ characterId, mana: { current, maximum, rate, maxRate }, cooldowns?: Record<skillId, remainingMs> }> }`.
+    - Emit on fixed cadence (tick), e.g., 10 TPS. Consider deltas later; start with full snapshot for simplicity.
+  - Optional supplemental subscriptions (only if needed): `manaService`/`characterService` for non-instance UIs. During Active, instance emits are sufficient for the runner UI.
+
+- Emission cadence
+
+  - Fixed TPS (e.g., 10) during Active; drop to onEvent for Pending/Complete.
+  - On critical events (member join/leave, mob death), emit immediately in addition to cadence.
+
+- Write policy during loop
+  - Update in-memory state every tick; do not call Prisma on every change.
+  - At cadence N (e.g., every 5–10s) or on end: batch persist Member mana/XP deltas and mob state.
+  - Where historical auditing matters, record compact event logs (optional, future stage).
+
 ### Development Stages
 
 - Stage 0: Repo ready (done) – monorepo, logging, tests green, pruning completed.
