@@ -56,3 +56,31 @@ export { useSocket } from "../socket/SocketProvider";
 
 // Re-export types for convenience
 export type { User, UpdateUserPayload, ServiceResponse } from "@shared/types";
+
+// Character hooks
+export {
+  useCreateCharacter,
+  useUpdateCharacter,
+  useListMyCharacters,
+} from "./character/useCharacterMethods";
+
+// Party hooks
+export {
+  useCreateParty,
+  useJoinParty,
+  useLeaveParty,
+  useSetReady,
+  useSubscribePartyWithMembers,
+} from "./party/usePartyMethods";
+
+// Instance hooks
+export {
+  useCreateInstance,
+  useStartInstance,
+} from "./instance/useInstanceMethods";
+
+// Song hooks
+export { useListSongs, useGetSongBeats } from "./song/useSongMethods";
+
+// Location hooks
+export { useListLocations } from "./location/useLocationMethods";

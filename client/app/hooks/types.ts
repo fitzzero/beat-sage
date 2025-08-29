@@ -6,6 +6,14 @@ import type {
   MessageServiceMethods,
   AgentServiceMethods,
   ModelServiceMethods,
+  CharacterServiceMethods,
+  GenreServiceMethods,
+  SongServiceMethods,
+  LocationServiceMethods,
+  PartyServiceMethods,
+  InstanceServiceMethods,
+  PartySnapshot,
+  InstanceSnapshot,
 } from "@shared/types";
 export type SubscriptionDataMap = {
   userService: User;
@@ -13,6 +21,8 @@ export type SubscriptionDataMap = {
   messageService: unknown;
   agentService: import("@shared/types").Agent | null;
   memoryService: Record<string, unknown> | null;
+  partyService: PartySnapshot;
+  instanceService: InstanceSnapshot;
 };
 
 export type ServiceMethodsMap = {
@@ -22,4 +32,10 @@ export type ServiceMethodsMap = {
   chatService: ChatServiceMethods;
   messageService: MessageServiceMethods;
   memoryService: import("@shared/types").MemoryServiceMethods;
+  characterService: CharacterServiceMethods;
+  genreService: GenreServiceMethods;
+  songService: SongServiceMethods;
+  locationService: LocationServiceMethods;
+  partyService: PartyServiceMethods;
+  instanceService: InstanceServiceMethods;
 };

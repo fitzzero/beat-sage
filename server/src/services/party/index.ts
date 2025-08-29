@@ -69,10 +69,25 @@ export default class PartyService extends BaseService<
         hostCharacterId
       );
       if (!owns) throw new Error("Insufficient permissions");
-      const created = await this.create({
-        hostCharacterId,
-      } as Prisma.PartyUncheckedCreateInput);
-      // Add host as a member
+      // Idempotency: if a party already exists for this host, return it
+      const existing = await (
+        this.delegate as unknown as {
+          findFirst: (args: {
+            where: { hostCharacterId: string };
+            select: { id: boolean };
+          }) => Promise<{ id: string } | null>;
+        }
+      ).findFirst({ where: { hostCharacterId }, select: { id: true } });
+
+      const partyId = existing
+        ? existing.id
+        : (
+            (await this.create({
+              hostCharacterId,
+            } as Prisma.PartyUncheckedCreateInput)) as unknown as { id: string }
+          ).id;
+
+      // Ensure host is a member of the party
       await (
         this.db["partyMember"] as unknown as {
           upsert: (args: {
@@ -83,10 +98,11 @@ export default class PartyService extends BaseService<
         }
       ).upsert({
         where: { characterId: hostCharacterId },
-        update: { partyId: created.id },
-        create: { partyId: created.id, characterId: hostCharacterId },
+        update: { partyId },
+        create: { partyId, characterId: hostCharacterId },
       });
-      return this.exactResponse("createParty", { id: created.id });
+
+      return this.exactResponse("createParty", { id: partyId });
     }
   );
 

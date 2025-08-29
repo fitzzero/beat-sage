@@ -19,7 +19,7 @@ import {
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import HomeIcon from "@mui/icons-material/Home";
-import ChatIcon from "@mui/icons-material/Chat";
+// Removed Chat from side menu per new Game-first nav
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import HealthAndSafetyIcon from "@mui/icons-material/HealthAndSafety";
 import MemoryIcon from "@mui/icons-material/Memory";
@@ -33,7 +33,8 @@ import { useIsMobile } from "../../hooks/useIsMobile";
 import CurrentUserAvatar from "./CurrentUserAvatar";
 import UserMenu from "./UserMenu";
 import { useCurrentUserSub } from "../../hooks";
-import RecentChats from "./RecentChats";
+// Recent chats removed; add RecentCharacters below
+import RecentCharacters from "./RecentCharacters";
 import { User } from "@shared/types";
 import { useTheme } from "@mui/material/styles";
 import GradientTypography from "../display/GradientTypography";
@@ -89,12 +90,22 @@ export default function GlobalSideMenu() {
       hasServiceAcl(user, service, "Moderate");
     const canAdmin = () => hasServiceAcl(user, "userService", "Admin");
     return [
-      { label: "Home", href: "/", icon: <HomeIcon /> },
+      { label: "Game", href: "/", icon: <HomeIcon /> },
       {
-        label: "Chat",
-        href: "/chat",
-        icon: <ChatIcon />,
-        details: <RecentChats />,
+        label: "Characters",
+        href: "/characters",
+        icon: <PeopleIcon />,
+        details: <RecentCharacters />,
+      },
+      {
+        label: "Songs",
+        href: "/songs",
+        icon: <MemoryIcon />, // simple music-ish icon replacement
+      },
+      {
+        label: "Map",
+        href: "/map",
+        icon: <DashboardIcon />, // placeholder icon for map
       },
       {
         label: "Dashboard",
