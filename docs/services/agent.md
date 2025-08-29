@@ -2,6 +2,93 @@
 
 Source: server/src/services/agent/index.ts
 
+## Public Methods
+
+### createAgent
+
+- Access: Read
+- Entry-scoped: No
+
+#### Payload
+
+```ts
+{ name: string; description?: string; instructions?: string; defaultModelId?: string; }
+```
+
+#### Response
+
+```ts
+{ id: string; }
+```
+
+### deleteAgent
+
+- Access: Admin
+- Entry-scoped: Yes
+
+#### Payload
+
+```ts
+{ id: string; }
+```
+
+#### Response
+
+```ts
+{ id: string; deleted: true; }
+```
+
+### listAll
+
+- Access: Read
+- Entry-scoped: No
+
+#### Payload
+
+```ts
+{ page?: number; pageSize?: number; }
+```
+
+#### Response
+
+```ts
+{ id: string; name: string; }[]
+```
+
+### listMine
+
+- Access: Read
+- Entry-scoped: No
+
+#### Payload
+
+```ts
+{ page?: number; pageSize?: number; }
+```
+
+#### Response
+
+```ts
+{ id: string; name: string; }[]
+```
+
+### updateAgent
+
+- Access: Moderate
+- Entry-scoped: Yes
+
+#### Payload
+
+```ts
+{ id: string; data: Partial<{ name: string; description?: string; instructions?: string; defaultModelId?: string; }>; }
+```
+
+#### Response
+
+```ts
+{ id: string; } | undefined
+```
+
 ## Admin Methods
 
 ### adminCreate

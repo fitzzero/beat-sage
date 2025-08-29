@@ -2,6 +2,93 @@
 
 Source: server/src/services/message/index.ts
 
+## Public Methods
+
+### cancelStream
+
+- Access: Moderate
+- Entry-scoped: Yes
+
+#### Payload
+
+```ts
+{ chatId: string; }
+```
+
+#### Response
+
+```ts
+{ cancelled: boolean; }
+```
+
+### listMessages
+
+- Access: Read
+- Entry-scoped: Yes
+
+#### Payload
+
+```ts
+{ chatId: string; before?: string; limit?: number; }
+```
+
+#### Response
+
+```ts
+import("/Users/root1/Dev/beat-sage/shared/types").ChatThreadMessage[]
+```
+
+### postMessage
+
+- Access: Read
+- Entry-scoped: Yes
+
+#### Payload
+
+```ts
+{ chatId: string; content: string; role?: "user" | "assistant" | "system" | "tool"; }
+```
+
+#### Response
+
+```ts
+{ id: string; }
+```
+
+### streamAssistantMessage
+
+- Access: Moderate
+- Entry-scoped: Yes
+
+#### Payload
+
+```ts
+{ chatId: string; agentId?: string; modelId?: string; prompt?: string; }
+```
+
+#### Response
+
+```ts
+{ id: string; }
+```
+
+### subscribeChatMessages
+
+- Access: Read
+- Entry-scoped: Yes
+
+#### Payload
+
+```ts
+{ chatId: string; limit?: number; }
+```
+
+#### Response
+
+```ts
+import("/Users/root1/Dev/beat-sage/shared/types").ChatThreadMessage[]
+```
+
 ## Admin Methods
 
 ### adminGet

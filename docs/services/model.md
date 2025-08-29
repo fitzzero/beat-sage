@@ -2,6 +2,59 @@
 
 Source: server/src/services/model/index.ts
 
+## Public Methods
+
+### listActive
+
+- Access: Read
+- Entry-scoped: No
+
+#### Payload
+
+```ts
+{ provider?: string; }
+```
+
+#### Response
+
+```ts
+{ id: string; provider: string; modelKey: string; displayName: string; }[]
+```
+
+### listAll
+
+- Access: Read
+- Entry-scoped: No
+
+#### Payload
+
+```ts
+{ provider?: string; page?: number; pageSize?: number; }
+```
+
+#### Response
+
+```ts
+{ id: string; provider: string; modelKey: string; displayName: string; }[]
+```
+
+### recordUsage
+
+- Access: Moderate
+- Entry-scoped: No
+
+#### Payload
+
+```ts
+{ id: string; inputTokens?: number; outputTokens?: number; }
+```
+
+#### Response
+
+```ts
+{ id: string; totalRequests: number; totalInputTokens: number; totalOutputTokens: number; }
+```
+
 ## Admin Methods
 
 ### adminCreate

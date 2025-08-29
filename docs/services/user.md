@@ -2,6 +2,25 @@
 
 Source: server/src/services/user/index.ts
 
+## Public Methods
+
+### updateUser
+
+- Access: Moderate
+- Entry-scoped: Yes
+
+#### Payload
+
+```ts
+{ id: string; data: import("/Users/root1/Dev/beat-sage/shared/types").UpdateUserPayload; }
+```
+
+#### Response
+
+```ts
+{ name: string | null; id: string; acl: Prisma.JsonValue | null; createdAt: Date; updatedAt: Date; image: string | null; email: string; username: string | null; emailVerified: Date | null; serviceAccess: Prisma.JsonValue | null; } | undefined
+```
+
 ## Admin Methods
 
 ### adminGet

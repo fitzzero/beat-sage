@@ -2,6 +2,144 @@
 
 Source: server/src/services/chat/index.ts
 
+## Public Methods
+
+### attachAgent
+
+- Access: Moderate
+- Entry-scoped: No
+
+#### Payload
+
+```ts
+{ id: string; agentId: string | null; }
+```
+
+#### Response
+
+```ts
+{ id: string; agentId: string | null; }
+```
+
+### createChat
+
+- Access: Read
+- Entry-scoped: No
+
+#### Payload
+
+```ts
+{ title: string; agentId?: string; members?: Array<{ userId: string; level: "Read" | "Moderate" | "Admin"; }>; }
+```
+
+#### Response
+
+```ts
+{ id: string; }
+```
+
+### inviteUser
+
+- Access: Moderate
+- Entry-scoped: No
+
+#### Payload
+
+```ts
+{ id: string; userId: string; level: "Read" | "Moderate" | "Admin"; }
+```
+
+#### Response
+
+```ts
+{ id: string; }
+```
+
+### leaveChat
+
+- Access: Read
+- Entry-scoped: No
+
+#### Payload
+
+```ts
+{ id: string; }
+```
+
+#### Response
+
+```ts
+{ id: string; }
+```
+
+### listMyChats
+
+- Access: Read
+- Entry-scoped: No
+
+#### Payload
+
+```ts
+{ page?: number; pageSize?: number; }
+```
+
+#### Response
+
+```ts
+import("/Users/root1/Dev/beat-sage/shared/types").ChatListItem[]
+```
+
+### removeUser
+
+- Access: Moderate
+- Entry-scoped: No
+
+#### Payload
+
+```ts
+{ id: string; userId: string; }
+```
+
+#### Response
+
+```ts
+{ id: string; }
+```
+
+### subscribeWithMessages
+
+- Access: Read
+- Entry-scoped: No
+
+#### Payload
+
+```ts
+{ id: string; limit?: number; }
+```
+
+#### Response
+
+```ts
+{ chat: import("/Users/root1/Dev/beat-sage/shared/types").ChatListItem | null; messages: import("/Users/root1/Dev/beat-sage/shared/types").ChatThreadMessage[]; }
+```
+
+### updateTitle
+
+- Access: Moderate
+- Entry-scoped: Yes
+
+#### Payload
+
+```ts
+{ id: string; title: string; }
+```
+
+#### Response
+
+```ts
+{ id: string; title: string; } | undefined
+```
+
 ## Admin Methods
 
 ### adminCreate

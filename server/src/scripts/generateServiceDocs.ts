@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import ts from "typescript";
+import { renderServiceMarkdown } from "./generateServiceDocs.render";
 
 // Paths
 // Determine paths relative to the workspace the script is executed from.
@@ -10,78 +11,6 @@ const MONOREPO_ROOT = path.resolve(SERVER_WORKSPACE_ROOT, "..");
 const SERVER_SRC = path.join(SERVER_WORKSPACE_ROOT, "src");
 const SERVICES_DIR = path.join(SERVER_SRC, "services");
 const OUTPUT_DIR = path.join(MONOREPO_ROOT, "docs", "services");
-
-// Admin method specs inferred from BaseService.installAdminMethods
-const ADMIN_METHOD_SPECS: Record<
-  string,
-  { payload: string; response: string; description: string }
-> = {
-  adminList: {
-    payload: `{
-  page?: number;
-  pageSize?: number;
-  sort?: { field?: string; direction?: "asc" | "desc" };
-  filter?: {
-    id?: string;
-    ids?: string[];
-    createdAfter?: string;
-    createdBefore?: string;
-    updatedAfter?: string;
-    updatedBefore?: string;
-  };
-}`,
-    response: `{
-  rows: Record<string, unknown>[];
-  page: number;
-  pageSize: number;
-  total: number;
-}`,
-    description: "List entries with pagination, sorting and basic filters.",
-  },
-  adminGet: {
-    payload: `{ id: string }`,
-    response: `Record<string, unknown> | undefined`,
-    description: "Fetch a single entry by id.",
-  },
-  adminCreate: {
-    payload: `{ data: Partial<Record<string, unknown>> }`,
-    response: `Record<string, unknown>`,
-    description: "Create a new entry (fields depend on service model).",
-  },
-  adminUpdate: {
-    payload: `{ id: string; data: Partial<Record<string, unknown>> }`,
-    response: `Record<string, unknown> | undefined`,
-    description: "Update an existing entry (fields depend on service model).",
-  },
-  adminDelete: {
-    payload: `{ id: string }`,
-    response: `{ id: string; deleted: true }`,
-    description: "Delete an entry by id.",
-  },
-  adminSetEntryACL: {
-    payload: `{ id: string; acl: Array<{ userId: string; level: "Read" | "Moderate" | "Admin" }> }`,
-    response: `Record<string, unknown> | undefined`,
-    description: "Set per-entry ACL list.",
-  },
-  adminGetSubscribers: {
-    payload: `{ id: string }`,
-    response: `{
-  id: string;
-  subscribers: Array<{ socketId: string; userId?: string }>;
-}`,
-    description: "Get connected socket subscribers for the entry.",
-  },
-  adminReemit: {
-    payload: `{ id: string }`,
-    response: `{ emitted: boolean }`,
-    description: "Re-emit the latest entry state to subscribers.",
-  },
-  adminUnsubscribeAll: {
-    payload: `{ id: string }`,
-    response: `{ id: string; unsubscribed: number }`,
-    description: "Clear and count subscribers for the entry.",
-  },
-};
 
 function ensureDir(dir: string) {
   fs.mkdirSync(dir, { recursive: true });
@@ -104,6 +33,22 @@ function getServiceFolders(): string[] {
 }
 
 function createProgram(filePaths: string[]): ts.Program {
+  // Use the server tsconfig for accurate path mappings and types
+  const configPath = ts.findConfigFile(
+    SERVER_WORKSPACE_ROOT,
+    (p) => ts.sys.fileExists(p),
+    "tsconfig.json"
+  );
+  if (configPath) {
+    const configFile = ts.readConfigFile(configPath, (f) => ts.sys.readFile(f));
+    const parsed = ts.parseJsonConfigFileContent(
+      configFile.config,
+      ts.sys,
+      SERVER_WORKSPACE_ROOT
+    );
+    return ts.createProgram({ rootNames: filePaths, options: parsed.options });
+  }
+  // Fallback minimal options
   return ts.createProgram(filePaths, {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.CommonJS,
@@ -154,16 +99,16 @@ function extractJSDoc(
   return texts.length ? texts.join(" ") : undefined;
 }
 
-function isDefinePublicMethodCall(
+function isDefineServiceMethodCall(
   expr: ts.Expression
 ): expr is ts.CallExpression {
   if (!ts.isCallExpression(expr)) return false;
   const callee = expr.expression;
-  return (
-    ts.isPropertyAccessExpression(callee) &&
-    callee.expression.kind === ts.SyntaxKind.ThisKeyword &&
-    callee.name.text === "definePublicMethod"
-  );
+  if (!ts.isPropertyAccessExpression(callee)) return false;
+  if (callee.expression.kind !== ts.SyntaxKind.ThisKeyword) return false;
+  const name = callee.name.text;
+  // Support both legacy definePublicMethod and new defineMethod wrappers
+  return name === "definePublicMethod" || name === "defineMethod";
 }
 
 function parseServiceFile(
@@ -175,18 +120,42 @@ function parseServiceFile(
 
   const serviceNameFromPath = path.basename(path.dirname(serviceIndexPath));
 
-  // TypeChecker available if needed in future
-  void program.getTypeChecker();
+  // Use TypeChecker to infer generic payload/response types when not explicitly provided
+  const checker = program.getTypeChecker();
 
   const publicMethods: PublicMethodDoc[] = [];
   const adminMethods: AdminMethodDoc[] = [];
   let serviceName = serviceNameFromPath;
+  let serviceMethodsType: ts.Type | null = null;
 
   function extractText(node: ts.Node): string {
     return node.getText(source as ts.SourceFile);
   }
 
   function visit(node: ts.Node) {
+    // Capture TServiceMethods from class extends BaseService<..., TServiceMethods>
+    if (ts.isClassDeclaration(node) && node.heritageClauses) {
+      for (const h of node.heritageClauses) {
+        if (h.token === ts.SyntaxKind.ExtendsKeyword) {
+          for (const t of h.types) {
+            const expr = t.expression;
+            const hasName =
+              (ts.isIdentifier(expr) && expr.text === "BaseService") ||
+              (ts.isPropertyAccessExpression(expr) &&
+                expr.name.text === "BaseService");
+            if (hasName && t.typeArguments && t.typeArguments.length >= 5) {
+              const methodsNode = t.typeArguments[4];
+              try {
+                serviceMethodsType = checker.getTypeFromTypeNode(methodsNode);
+              } catch (err) {
+                void err;
+                serviceMethodsType = null;
+              }
+            }
+          }
+        }
+      }
+    }
     // Find constructor super call to get serviceName string if present
     if (ts.isCallExpression(node)) {
       const callExpr = node;
@@ -283,12 +252,12 @@ function parseServiceFile(
     if (
       ts.isPropertyDeclaration(node) &&
       node.initializer &&
-      isDefinePublicMethodCall(node.initializer)
+      isDefineServiceMethodCall(node.initializer)
     ) {
       const callExpr = node.initializer;
       const typeArgs = callExpr.typeArguments || [];
-      const payloadType = typeArgs[0] ? extractText(typeArgs[0]) : "unknown";
-      const responseType = typeArgs[1] ? extractText(typeArgs[1]) : "unknown";
+      let payloadType = typeArgs[0] ? extractText(typeArgs[0]) : "unknown";
+      let responseType = typeArgs[1] ? extractText(typeArgs[1]) : "unknown";
 
       const args = callExpr.arguments;
       const nameArg = args[0];
@@ -308,6 +277,168 @@ function parseServiceFile(
             ts.isIdentifier(p.name) &&
             p.name.text === "resolveEntryId"
         );
+      }
+
+      // Try to infer payload/response types using the TypeChecker when generics are omitted
+      try {
+        // Prefer extracting from the call's resolved signature return type (ServiceMethodDefinition<P, R>)
+        if (payloadType === "unknown" || responseType === "unknown") {
+          const sig = checker.getResolvedSignature(callExpr);
+          if (sig) {
+            const ret = checker.getReturnTypeOfSignature(sig);
+            const ref = ret as unknown as { typeArguments?: ts.Type[] };
+            const aliasArgs = (
+              ret as unknown as { aliasTypeArguments?: ts.Type[] }
+            ).aliasTypeArguments;
+            const targs =
+              ref && ref.typeArguments && ref.typeArguments.length >= 2
+                ? ref.typeArguments
+                : aliasArgs;
+            if (targs && targs.length >= 2) {
+              if (payloadType === "unknown") {
+                payloadType = checker.typeToString(
+                  targs[0],
+                  callExpr,
+                  ts.TypeFormatFlags.NoTruncation
+                );
+              }
+              if (responseType === "unknown") {
+                responseType = checker.typeToString(
+                  targs[1],
+                  callExpr,
+                  ts.TypeFormatFlags.NoTruncation
+                );
+              }
+            }
+
+            // Fallback: inspect 'handler' property type of the returned object type alias
+            if (payloadType === "unknown" || responseType === "unknown") {
+              const props = ret.getProperties();
+              const handlerSym = props.find((s) => s.getName() === "handler");
+              if (handlerSym) {
+                const hType = checker.getTypeOfSymbolAtLocation(
+                  handlerSym,
+                  callExpr
+                );
+                const hSigs = checker.getSignaturesOfType(
+                  hType,
+                  ts.SignatureKind.Call
+                );
+                const hSig = hSigs[0];
+                if (hSig) {
+                  if (payloadType === "unknown" && hSig.parameters[0]) {
+                    const pSym = hSig.parameters[0];
+                    const pType = checker.getTypeOfSymbolAtLocation(
+                      pSym,
+                      callExpr
+                    );
+                    const pStr = checker.typeToString(
+                      pType,
+                      callExpr,
+                      ts.TypeFormatFlags.NoTruncation
+                    );
+                    if (pStr && pStr !== "any") payloadType = pStr;
+                  }
+                  if (responseType === "unknown") {
+                    const rType = checker.getReturnTypeOfSignature(hSig);
+                    let rStr = checker.typeToString(
+                      rType,
+                      callExpr,
+                      ts.TypeFormatFlags.NoTruncation
+                    );
+                    const match = /^Promise<(.+)>$/.exec(rStr);
+                    if (match) rStr = match[1];
+                    if (rStr && rStr !== "any") responseType = rStr;
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // Fallback: inspect the handler function's parameter and return type
+        if (payloadType === "unknown" || responseType === "unknown") {
+          const handler = args[2];
+          if (
+            handler &&
+            (ts.isArrowFunction(handler) || ts.isFunctionExpression(handler))
+          ) {
+            // payload from first parameter
+            if (payloadType === "unknown" && handler.parameters[0]) {
+              const pType = checker.getTypeAtLocation(handler.parameters[0]);
+              const pStr = checker.typeToString(
+                pType,
+                handler.parameters[0],
+                ts.TypeFormatFlags.NoTruncation
+              );
+              if (pStr && pStr !== "any") payloadType = pStr;
+            }
+            // response from return type (unwrap Promise<...> if present)
+            if (responseType === "unknown") {
+              const hType = checker.getTypeAtLocation(handler);
+              const hSigs = checker.getSignaturesOfType(
+                hType,
+                ts.SignatureKind.Call
+              );
+              const hSig = hSigs[0];
+              if (hSig) {
+                const rType = checker.getReturnTypeOfSignature(hSig);
+                let rStr = checker.typeToString(
+                  rType,
+                  handler,
+                  ts.TypeFormatFlags.NoTruncation
+                );
+                // unwrap Promise<T>
+                const match = /^Promise<(.+)>$/.exec(rStr);
+                if (match) rStr = match[1];
+                if (rStr && rStr !== "any") responseType = rStr;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        void err;
+        // ignore type inference errors; keep "unknown"
+      }
+
+      // Map from TServiceMethods[K] if available
+      if (
+        (payloadType === "unknown" || responseType === "unknown") &&
+        methodName &&
+        serviceMethodsType
+      ) {
+        try {
+          const methodSym = serviceMethodsType.getProperty(methodName);
+          if (methodSym) {
+            const methodSymType = checker.getTypeOfSymbolAtLocation(
+              methodSym,
+              node
+            );
+            const pSym = checker.getPropertyOfType(methodSymType, "payload");
+            if (payloadType === "unknown" && pSym) {
+              const pType = checker.getTypeOfSymbolAtLocation(pSym, node);
+              const pStr = checker.typeToString(
+                pType,
+                node,
+                ts.TypeFormatFlags.NoTruncation
+              );
+              if (pStr && pStr !== "any") payloadType = pStr;
+            }
+            const rSym = checker.getPropertyOfType(methodSymType, "response");
+            if (responseType === "unknown" && rSym) {
+              const rType = checker.getTypeOfSymbolAtLocation(rSym, node);
+              const rStr = checker.typeToString(
+                rType,
+                node,
+                ts.TypeFormatFlags.NoTruncation
+              );
+              if (rStr && rStr !== "any") responseType = rStr;
+            }
+          }
+        } catch (err) {
+          void err;
+          // ignore lookup failures
+        }
       }
 
       const description = extractJSDoc(node, source as ts.SourceFile);
@@ -339,55 +470,7 @@ function parseServiceFile(
   };
 }
 
-function renderServiceMarkdown(doc: ServiceDoc): string {
-  const lines: string[] = [];
-  lines.push(`# ${doc.serviceName}`);
-  lines.push("");
-  lines.push(`Source: ${path.relative(MONOREPO_ROOT, doc.filePath)}`);
-  lines.push("");
-
-  if (doc.publicMethods.length) {
-    lines.push("## Public Methods");
-    lines.push("");
-    for (const m of doc.publicMethods) {
-      lines.push(`### ${m.name}`);
-      if (m.description) {
-        lines.push("");
-        lines.push(m.description);
-      }
-      lines.push("");
-      lines.push(`- Access: ${m.access}`);
-      lines.push(`- Entry-scoped: ${m.entryScoped ? "Yes" : "No"}`);
-      lines.push("");
-      lines.push("#### Payload");
-      lines.push("\n```ts\n" + m.payloadType + "\n```\n");
-      lines.push("#### Response");
-      lines.push("\n```ts\n" + m.responseType + "\n```\n");
-    }
-  }
-
-  const enabledAdmins = doc.adminMethods.filter((a) => a.enabled);
-  if (enabledAdmins.length) {
-    lines.push("## Admin Methods");
-    lines.push("");
-    for (const a of enabledAdmins) {
-      const spec = ADMIN_METHOD_SPECS[a.name];
-      lines.push(`### ${a.name}`);
-      lines.push("");
-      lines.push(`- Access: ${a.access}`);
-      if (spec?.description) lines.push(`- Description: ${spec.description}`);
-      if (spec) {
-        lines.push("");
-        lines.push("#### Payload");
-        lines.push("\n```ts\n" + spec.payload + "\n```\n");
-        lines.push("#### Response");
-        lines.push("\n```ts\n" + spec.response + "\n```\n");
-      }
-    }
-  }
-
-  return lines.join("\n");
-}
+// renderServiceMarkdown moved to ./generateServiceDocs.render
 
 function run() {
   ensureDir(OUTPUT_DIR);
