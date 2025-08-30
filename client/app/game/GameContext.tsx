@@ -85,6 +85,22 @@ export function GameProvider({
       setSelectedCharacterIdState(saved);
     }
   }, []);
+
+  // Validate selected character exists after fetching characters
+  useEffect(() => {
+    if (characters.length > 0 && selectedCharacterId) {
+      const characterExists = characters.some(
+        (c) => c.id === selectedCharacterId
+      );
+      if (!characterExists) {
+        // Clear invalid character selection
+        setSelectedCharacterIdState(null);
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem("bs:selectedCharacterId");
+        }
+      }
+    }
+  }, [characters, selectedCharacterId]);
   const setSelectedCharacterId = useCallback((id: string | null) => {
     setSelectedCharacterIdState(id);
     if (typeof window !== "undefined") {
@@ -231,6 +247,15 @@ export function GameProvider({
     if (!selectedCharacterId || !createParty.isReady) {
       return null;
     }
+
+    // Double-check that the selected character actually exists
+    const characterExists = characters.some(
+      (c) => c.id === selectedCharacterId
+    );
+    if (!characterExists) {
+      return null;
+    }
+
     const result = (await createParty.execute({
       hostCharacterId: selectedCharacterId,
     })) as { id: string } | null;
@@ -239,13 +264,22 @@ export function GameProvider({
       return result.id;
     }
     return null;
-  }, [createParty, selectedCharacterId]);
+  }, [createParty, selectedCharacterId, characters]);
 
   const joinParty = useCallback(
     async (newPartyId: string) => {
       if (!selectedCharacterId || !joinPartyMethod.isReady) {
         return;
       }
+
+      // Double-check that the selected character actually exists
+      const characterExists = characters.some(
+        (c) => c.id === selectedCharacterId
+      );
+      if (!characterExists) {
+        return;
+      }
+
       const result = await joinPartyMethod.execute({
         partyId: newPartyId,
         characterId: selectedCharacterId,
@@ -254,13 +288,22 @@ export function GameProvider({
         setPartyId(newPartyId);
       }
     },
-    [joinPartyMethod, selectedCharacterId]
+    [joinPartyMethod, selectedCharacterId, characters]
   );
 
   const leaveParty = useCallback(async () => {
     if (!partyId || !selectedCharacterId || !leavePartyMethod.isReady) {
       return;
     }
+
+    // Double-check that the selected character actually exists
+    const characterExists = characters.some(
+      (c) => c.id === selectedCharacterId
+    );
+    if (!characterExists) {
+      return;
+    }
+
     const result = await leavePartyMethod.execute({
       partyId,
       characterId: selectedCharacterId,
@@ -269,20 +312,29 @@ export function GameProvider({
       setPartyId(null);
       setParty(null);
     }
-  }, [partyId, selectedCharacterId, leavePartyMethod]);
+  }, [partyId, selectedCharacterId, leavePartyMethod, characters]);
 
   const setReady = useCallback(
     async (ready: boolean) => {
       if (!partyId || !selectedCharacterId || !setReadyMethod.isReady) {
         return;
       }
+
+      // Double-check that the selected character actually exists
+      const characterExists = characters.some(
+        (c) => c.id === selectedCharacterId
+      );
+      if (!characterExists) {
+        return;
+      }
+
       await setReadyMethod.execute({
         partyId,
         characterId: selectedCharacterId,
         isReady: ready,
       });
     },
-    [partyId, selectedCharacterId, setReadyMethod]
+    [partyId, selectedCharacterId, setReadyMethod, characters]
   );
 
   const invitePlayers = useCallback(async () => {

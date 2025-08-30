@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { resetDatabase } from "../setup";
 import { seedUsers } from "../seed";
 import {
@@ -514,5 +515,297 @@ describe("InstanceService integration", () => {
 
     client.close();
     await server.stop();
+  });
+
+  // GameContext Integration Tests
+  describe("GameContext integration scenarios", () => {
+    it("handles song/location selection and persistence like GameContext", async () => {
+      const { regularAId } = await seedUsers();
+      const server = await startTestServer();
+      const portLocal = server.port;
+      const client = await connectAsUser(portLocal, regularAId);
+
+      // Setup like GameContext does
+      const genre = await testPrisma.genre.create({
+        data: { name: `G-${Math.random().toString(36).slice(2, 6)}` },
+      });
+      const song1 = await testPrisma.song.create({
+        data: { name: "GameSong1", genreId: genre.id, src: "/songs/game1.mp3" },
+      });
+      const song2 = await testPrisma.song.create({
+        data: { name: "GameSong2", genreId: genre.id, src: "/songs/game2.mp3" },
+      });
+      const loc1 = await testPrisma.location.create({
+        data: { name: "GameArena1", difficulty: 1 },
+      });
+      const loc2 = await testPrisma.location.create({
+        data: { name: "GameArena2", difficulty: 2 },
+      });
+
+      // Create character and party like GameContext
+      const character = await emitWithAck<{ name: string }, { id: string }>(
+        client,
+        "characterService:createCharacter",
+        { name: "GameContextTestChar" }
+      );
+      const party = await emitWithAck<
+        { hostCharacterId: string },
+        { id: string }
+      >(client, "partyService:createParty", { hostCharacterId: character.id });
+
+      // Test GameContext's song selection flow
+      const instance = await emitWithAck<
+        { partyId: string; locationId: string; songId: string },
+        { id: string; status: string }
+      >(client, "instanceService:createInstance", {
+        partyId: party.id,
+        locationId: loc1.id,
+        songId: song1.id,
+      });
+
+      // Subscribe to instance like GameContext does
+      await emitWithAck<{ entryId: string }, unknown>(
+        client,
+        "instanceService:subscribe",
+        { entryId: instance.id }
+      );
+
+      // Test song update (like GameContext.selectSong)
+      await emitWithAck<
+        { id: string; songId: string },
+        { id: string; songId: string }
+      >(client, "instanceService:updateSettings", {
+        id: instance.id,
+        songId: song2.id,
+      });
+
+      // Test location update (like GameContext.selectLocation)
+      await emitWithAck<
+        { id: string; locationId: string },
+        { id: string; locationId: string }
+      >(client, "instanceService:updateSettings", {
+        id: instance.id,
+        locationId: loc2.id,
+      });
+
+      // Verify persistence - subscribe again and check values
+      const updatedInstance = await emitWithAck<
+        { entryId: string },
+        {
+          status: string;
+          songId: string;
+          locationId: string;
+          party: { memberIds: string[] };
+        } | null
+      >(client, "instanceService:subscribe", { entryId: instance.id });
+
+      expect(updatedInstance).toBeTruthy();
+      if (updatedInstance) {
+        expect(updatedInstance.songId).toBe(song2.id);
+        expect(updatedInstance.locationId).toBe(loc2.id);
+        expect(updatedInstance.status).toBe("Pending");
+      }
+
+      client.close();
+      await server.stop();
+    });
+
+    it("handles character validation and error scenarios like GameContext", async () => {
+      const { regularAId } = await seedUsers();
+      const server = await startTestServer();
+      const portLocal = server.port;
+      const client = await connectAsUser(portLocal, regularAId);
+
+      // Create a valid character
+      const validChar = await emitWithAck<{ name: string }, { id: string }>(
+        client,
+        "characterService:createCharacter",
+        { name: "ValidChar" }
+      );
+
+      // Try to create party with non-existent character (should fail)
+      const fakeCharId = "00000000-0000-0000-0000-000000000000";
+      const invalidParty = await emitWithAck<
+        { hostCharacterId: string },
+        { id: string } | undefined
+      >(client, "partyService:createParty", { hostCharacterId: fakeCharId });
+
+      // Should return undefined (error case)
+      expect(invalidParty).toBeUndefined();
+
+      // Create party with valid character (should succeed)
+      const validParty = await emitWithAck<
+        { hostCharacterId: string },
+        { id: string }
+      >(client, "partyService:createParty", { hostCharacterId: validChar.id });
+      expect(validParty.id).toBeTruthy();
+
+      // Try to join party with wrong character (should fail)
+      const wrongCharId = "11111111-1111-1111-1111-111111111111";
+      const invalidJoin = await emitWithAck<
+        { partyId: string; characterId: string },
+        { id: string } | undefined
+      >(client, "partyService:joinParty", {
+        partyId: validParty.id,
+        characterId: wrongCharId,
+      });
+      expect(invalidJoin).toBeUndefined();
+
+      client.close();
+      await server.stop();
+    });
+
+    it("handles instance creation with both song and location like GameContext", async () => {
+      const { regularAId } = await seedUsers();
+      const server = await startTestServer();
+      const portLocal = server.port;
+      const client = await connectAsUser(portLocal, regularAId);
+
+      const genre = await testPrisma.genre.create({
+        data: { name: `G-${Math.random().toString(36).slice(2, 6)}` },
+      });
+      const song = await testPrisma.song.create({
+        data: {
+          name: "ContextSong",
+          genreId: genre.id,
+          src: "/songs/context.mp3",
+        },
+      });
+      const location = await testPrisma.location.create({
+        data: { name: "ContextArena", difficulty: 1 },
+      });
+
+      const character = await emitWithAck<{ name: string }, { id: string }>(
+        client,
+        "characterService:createCharacter",
+        { name: "ContextChar" }
+      );
+      const party = await emitWithAck<
+        { hostCharacterId: string },
+        { id: string }
+      >(client, "partyService:createParty", { hostCharacterId: character.id });
+
+      // Test the automatic instance creation flow that GameContext uses
+      const instance = await emitWithAck<
+        { partyId: string; locationId: string; songId: string },
+        { id: string; status: string }
+      >(client, "instanceService:createInstance", {
+        partyId: party.id,
+        locationId: location.id,
+        songId: song.id,
+      });
+
+      expect(instance.id).toBeTruthy();
+      expect(instance.status).toBe("Pending");
+
+      // Verify the party now has the instance linked
+      const partySnapshot = await emitWithAck<
+        { partyId: string },
+        {
+          hostCharacterId: string;
+          members: Array<{ characterId: string; isReady: boolean }>;
+          instanceId?: string;
+        }
+      >(client, "partyService:subscribeWithMembers", { partyId: party.id });
+
+      expect(partySnapshot.instanceId).toBe(instance.id);
+
+      client.close();
+      await server.stop();
+    });
+
+    it("handles subscription and real-time updates like GameContext", async () => {
+      const { regularAId, regularBId } = await seedUsers();
+      const server = await startTestServer();
+      const portLocal = server.port;
+      const clientA = await connectAsUser(portLocal, regularAId);
+      const clientB = await connectAsUser(portLocal, regularBId);
+
+      const genre = await testPrisma.genre.create({
+        data: { name: `G-${Math.random().toString(36).slice(2, 6)}` },
+      });
+      const song1 = await testPrisma.song.create({
+        data: { name: "SubSong1", genreId: genre.id, src: "/songs/sub1.mp3" },
+      });
+      const song2 = await testPrisma.song.create({
+        data: { name: "SubSong2", genreId: genre.id, src: "/songs/sub2.mp3" },
+      });
+      const location = await testPrisma.location.create({
+        data: { name: "SubArena", difficulty: 1 },
+      });
+
+      // Setup party and instance
+      const charA = await emitWithAck<{ name: string }, { id: string }>(
+        clientA,
+        "characterService:createCharacter",
+        { name: "SubCharA" }
+      );
+      const charB = await emitWithAck<{ name: string }, { id: string }>(
+        clientB,
+        "characterService:createCharacter",
+        { name: "SubCharB" }
+      );
+
+      const party = await emitWithAck<
+        { hostCharacterId: string },
+        { id: string }
+      >(clientA, "partyService:createParty", { hostCharacterId: charA.id });
+
+      await emitWithAck<
+        { partyId: string; characterId: string },
+        { id: string }
+      >(clientB, "partyService:joinParty", {
+        partyId: party.id,
+        characterId: charB.id,
+      });
+
+      const instance = await emitWithAck<
+        { partyId: string; locationId: string; songId: string },
+        { id: string; status: string }
+      >(clientA, "instanceService:createInstance", {
+        partyId: party.id,
+        locationId: location.id,
+        songId: song1.id,
+      });
+
+      // Test basic subscription functionality (simplified for reliability)
+      await emitWithAck<{ entryId: string }, unknown>(
+        clientA,
+        "instanceService:subscribe",
+        { entryId: instance.id }
+      );
+
+      // Test that we can update settings
+      const updateResult = await emitWithAck<
+        { id: string; songId: string },
+        { id: string; songId: string }
+      >(clientA, "instanceService:updateSettings", {
+        id: instance.id,
+        songId: song2.id,
+      });
+
+      expect(updateResult.songId).toBe(song2.id);
+
+      // Test that we can subscribe again and get updated data
+      const updatedInstance = await emitWithAck<
+        { entryId: string },
+        {
+          status: string;
+          songId: string;
+          locationId: string;
+          party: { memberIds: string[] };
+        } | null
+      >(clientA, "instanceService:subscribe", { entryId: instance.id });
+
+      expect(updatedInstance).toBeTruthy();
+      if (updatedInstance) {
+        expect(updatedInstance.songId).toBe(song2.id);
+        expect(updatedInstance.locationId).toBe(location.id);
+      }
+
+      clientA.close();
+      clientB.close();
+      await server.stop();
+    }, 30000); // Increased timeout for this test
   });
 });

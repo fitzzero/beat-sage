@@ -22,6 +22,8 @@ beforeAll(async () => {
 afterAll(async () => {
   // Close database connections
   await testPool.end();
+  // Disconnect Prisma client
+  await testPrisma.$disconnect();
 });
 
 // Reset database state between tests

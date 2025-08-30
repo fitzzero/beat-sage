@@ -103,6 +103,26 @@ export async function startTestServer(overrides?: {
   const port = typeof address === "object" && address ? address.port : 0;
 
   const stop = async () => {
+    // Close all active socket connections
+    const sockets = await io.fetchSockets();
+    for (const socket of sockets) {
+      socket.disconnect(true);
+    }
+
+    // Clear any active timers from instance service
+    if (instanceService) {
+      // Access the active instances map and clear any timers
+      const activeInstances = (instanceService as any).active;
+      if (activeInstances) {
+        for (const [id, rec] of activeInstances) {
+          if (rec.ticker) {
+            clearInterval(rec.ticker);
+            rec.ticker = null;
+          }
+        }
+      }
+    }
+
     await new Promise<void>((resolve) => {
       void io.close(() => {
         resolve();
@@ -145,7 +165,16 @@ export async function connectAsUser(
     auth,
     timeout: 10000,
     reconnection: false,
+    // Force close on disconnect to prevent hanging connections
+    forceNew: true,
   });
+
+  // Add cleanup handler to prevent hanging connections
+  client.on("disconnect", () => {
+    client.removeAllListeners();
+    client.close();
+  });
+
   await new Promise<void>((resolve, reject) => {
     client.once("connect", () => resolve());
     client.once("connect_error", (err) => reject(err));

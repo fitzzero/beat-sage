@@ -2,14 +2,99 @@ import { Server } from "socket.io";
 import { ServiceResponse, ServiceMethodDefinition } from "../types/socket";
 import { CustomSocket } from "./baseService";
 import logger from "../utils/logger";
+import { PrismaClient } from "@prisma/client";
 
 class ServiceRegistry {
   private io: Server;
   private services: Map<string, unknown> = new Map();
   private logger = logger.child({ service: this.constructor.name });
+  private prisma: PrismaClient;
+
+  // Default service access permissions for new users
+  private defaultServiceAccess: Record<string, "Read" | "Moderate" | "Admin"> =
+    {
+      partyService: "Read",
+      characterService: "Read",
+      songService: "Read",
+      locationService: "Read",
+      instanceService: "Read",
+      messageService: "Read",
+      memoryService: "Read",
+      userService: "Read",
+      modelService: "Read",
+      agentService: "Read",
+      genreService: "Read",
+      manaService: "Read",
+      skillService: "Read",
+    };
 
   constructor(io: Server) {
     this.io = io;
+    this.prisma = new PrismaClient();
+  }
+
+  // Ensure user has default service access permissions
+  private async ensureDefaultServiceAccess(
+    socket: CustomSocket
+  ): Promise<void> {
+    if (!socket.userId) return;
+
+    try {
+      // Get current user service access
+      const user = await this.prisma.user.findUnique({
+        where: { id: socket.userId },
+        select: { serviceAccess: true },
+      });
+
+      if (!user) {
+        this.logger.warn(
+          `User ${socket.userId} not found during service access check`
+        );
+        return;
+      }
+
+      const currentAccess =
+        (user.serviceAccess as Record<string, "Read" | "Moderate" | "Admin">) ||
+        {};
+      const updatedAccess: Record<string, "Read" | "Moderate" | "Admin"> = {
+        ...currentAccess,
+      };
+      let hasChanges = false;
+
+      // Add any missing default permissions
+      for (const [serviceName, defaultLevel] of Object.entries(
+        this.defaultServiceAccess
+      )) {
+        if (!updatedAccess[serviceName]) {
+          updatedAccess[serviceName] = defaultLevel;
+          hasChanges = true;
+          this.logger.info(
+            `Adding default ${defaultLevel} access for ${serviceName} to user ${socket.userId}`
+          );
+        }
+      }
+
+      // Update database if changes were made
+      if (hasChanges) {
+        await this.prisma.user.update({
+          where: { id: socket.userId },
+          data: { serviceAccess: updatedAccess },
+        });
+        this.logger.info(`Updated service access for user ${socket.userId}`);
+      }
+
+      // Load service access into socket for BaseService access checks
+      socket.serviceAccess = updatedAccess;
+      this.logger.debug(`Loaded service access for user ${socket.userId}`, {
+        serviceAccess: updatedAccess,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Error ensuring default service access for user ${socket.userId}:`,
+        error
+      );
+      // Don't throw - we don't want to break authentication
+    }
   }
 
   // Register a service instance with auto-discovery of public methods
@@ -145,6 +230,9 @@ class ServiceRegistry {
             if (callback) callback(errorResponse);
             return;
           }
+
+          // Ensure user has default service access permissions
+          await this.ensureDefaultServiceAccess(socket);
 
           // Enforce access defined by the method, including optional entry-level ACLs
           const serviceName = eventName.split(":")[0];
