@@ -21,37 +21,44 @@ type LocationSelectDialogProps = {
   open: boolean;
   onClose: () => void;
   onSelect: (locationId: string) => void;
+  selectedLocationId?: string | null;
 };
 
 export default function LocationSelectDialog({
   open,
   onClose,
   onSelect,
+  selectedLocationId,
 }: LocationSelectDialogProps) {
   const listLocations = useListLocations();
   const [query, setQuery] = useState("");
-  const [page, setPage] = useState(1);
+  const [page] = useState(1);
   const pageSize = 25;
 
   useEffect(() => {
-    if (!open) return;
-    if (!listLocations.isReady) return;
+    if (!open) {
+      return;
+    }
+    if (!listLocations.isReady) {
+      return;
+    }
     void listLocations.execute({ page, pageSize });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, listLocations.isReady, page]);
 
-  const locations =
-    (
-      listLocations as unknown as {
-        data?: Array<{ id: string; name: string; difficulty: number }>;
-      }
-    ).data || [];
-
   const filtered = useMemo(() => {
+    const locations =
+      (
+        listLocations as unknown as {
+          data?: Array<{ id: string; name: string; difficulty: number }>;
+        }
+      ).data || [];
     const q = query.trim().toLowerCase();
-    if (!q) return locations;
+    if (!q) {
+      return locations;
+    }
     return locations.filter((l) => l.name.toLowerCase().includes(q));
-  }, [locations, query]);
+  }, [listLocations, query]);
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
@@ -73,10 +80,27 @@ export default function LocationSelectDialog({
           )}
           <List disablePadding>
             {filtered.map((l) => (
-              <ListItemButton key={l.id} onClick={() => onSelect(l.id)}>
+              <ListItemButton
+                key={l.id}
+                onClick={() => onSelect(l.id)}
+                selected={l.id === selectedLocationId}
+                sx={{
+                  "&.Mui-selected": {
+                    backgroundColor: "primary.main",
+                    color: "primary.contrastText",
+                    "&:hover": {
+                      backgroundColor: "primary.dark",
+                    },
+                  },
+                }}
+              >
                 <ListItemText
                   primary={l.name}
-                  secondary={`Difficulty: ${l.difficulty}`}
+                  secondary={
+                    selectedLocationId === l.id
+                      ? "✓ Selected"
+                      : `Difficulty: ${l.difficulty}`
+                  }
                 />
               </ListItemButton>
             ))}

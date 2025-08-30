@@ -12,3 +12,7 @@ export function useStartInstance() {
 
 // Subscribe implemented server-side via custom subscribe method name; our generic useSubscription
 // uses serviceName+entryId pattern. Expose a typed helper when needed in GameContext.
+
+export function useUpdateInstanceSettings() {
+  return useServiceMethod("instanceService", "updateSettings");
+}

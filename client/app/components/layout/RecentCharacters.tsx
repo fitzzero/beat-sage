@@ -12,8 +12,7 @@ import {
 } from "@mui/material";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { useCreateCharacter } from "../../hooks/character/useCharacterMethods";
-import { useListMyCharacters } from "../../hooks/character/useCharacterMethods";
+import { useCreateCharacter, useListMyCharacters } from "../../hooks/character/useCharacterMethods";
 
 export default function RecentCharacters() {
   const listMine = useListMyCharacters();

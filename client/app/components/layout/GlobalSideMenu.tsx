@@ -90,7 +90,7 @@ export default function GlobalSideMenu() {
       hasServiceAcl(user, service, "Moderate");
     const canAdmin = () => hasServiceAcl(user, "userService", "Admin");
     return [
-      { label: "Game", href: "/", icon: <HomeIcon /> },
+      { label: "Game", href: "/game", icon: <HomeIcon /> },
       {
         label: "Characters",
         href: "/characters",
@@ -174,7 +174,14 @@ export default function GlobalSideMenu() {
           {routes
             .filter((r) => (r.isVisible ? r.isVisible(user) : true))
             .map((route) => {
-              const isSelected = pathname === route.href;
+              const partyRegex =
+                /^\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+              const isSelected =
+                route.href === "/game"
+                  ? pathname === "/game" ||
+                    pathname === "/" ||
+                    partyRegex.test(pathname)
+                  : pathname === route.href;
               const hasChildren = route.children && route.children.length > 0;
               const hasDetails = !!route.details || hasChildren;
               if (!hasDetails) {
@@ -202,9 +209,23 @@ export default function GlobalSideMenu() {
                   disableGutters
                   square
                   defaultExpanded={parentSelected}
+                  sx={{
+                    bgcolor: "transparent",
+                    backgroundImage: "none",
+                    boxShadow: "none",
+                    "&:hover": {
+                      backgroundColor: theme.palette.action.hover,
+                    },
+                  }}
                 >
                   <AccordionSummary
                     expandIcon={hasDetails ? <ExpandMoreIcon /> : undefined}
+                    sx={{
+                      px: 2,
+                      py: 1,
+                      minHeight: (theme) => theme.spacing(6),
+                      "& .MuiAccordionSummary-content": { m: 0 },
+                    }}
                   >
                     <Box
                       sx={{

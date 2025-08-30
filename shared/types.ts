@@ -419,6 +419,7 @@ export type LocationServiceMethods = {
 export type PartySnapshot = {
   hostCharacterId: string;
   members: Array<{ characterId: string; isReady: boolean }>;
+  instanceId?: string | null;
 };
 
 export type PartyServiceMethods = {
@@ -465,6 +466,10 @@ export type InstanceServiceMethods = {
   createInstance: {
     payload: { partyId: string; locationId: string; songId: string };
     response: { id: string; status: Instance["status"] };
+  };
+  updateSettings: {
+    payload: { id: string; songId?: string; locationId?: string };
+    response: { id: string; songId?: string; locationId?: string };
   };
   startInstance: {
     payload: { id: string };

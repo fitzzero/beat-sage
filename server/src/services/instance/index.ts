@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import BaseService from "../../core/baseService";
 import type { CustomSocket } from "../../core/baseService";
 import type { Prisma, Instance as PrismaInstance } from "@prisma/client";
@@ -132,6 +133,20 @@ export default class InstanceService extends BaseService<
         locationId,
         songId,
       } as Prisma.InstanceUncheckedCreateInput);
+
+      // Set this instance as the party's active instance
+      await (
+        this.db["party"] as unknown as {
+          update: (args: {
+            where: { id: string };
+            data: { instanceId: string };
+          }) => Promise<unknown>;
+        }
+      ).update({
+        where: { id: partyId },
+        data: { instanceId: created.id },
+      });
+
       /* eslint-disable @typescript-eslint/no-unsafe-assignment */
       const snapshot: InstanceSnapshot = await this.buildSnapshot({
         id: created.id,
@@ -148,6 +163,56 @@ export default class InstanceService extends BaseService<
         status: created.status,
       });
     }
+  );
+
+  // Update instance pending settings (song/location) before start
+  public updateSettings = this.defineMethod(
+    "updateSettings",
+    "Read",
+    async (payload, socket) => {
+      if (!socket.userId) throw new Error("Authentication required");
+      const { id, songId, locationId } = payload as {
+        id: string;
+        songId?: string;
+        locationId?: string;
+      };
+
+      // Allow host or member to modify pending settings (optional: restrict to host)
+      await this.ensureAccessForMethod("Read", socket, id);
+
+      const patch: Prisma.InstanceUncheckedUpdateInput = {};
+      if (songId) (patch as { songId?: string }).songId = songId;
+      if (locationId)
+        (patch as { locationId?: string }).locationId = locationId;
+
+      const updated = await this.update(id, patch);
+      if (!updated) throw new Error("Instance not found");
+      // If we maintain an active record, update its snapshot and emit
+      const rec = (this as unknown as { active?: Map<string, unknown> })
+        .active as
+        | Map<
+            string,
+            {
+              snapshot: InstanceSnapshot;
+            }
+          >
+        | undefined;
+      if (rec && rec.has(id)) {
+        const r = rec.get(id)!;
+        if (songId)
+          (r.snapshot as unknown as { songId?: string }).songId = songId;
+        if (locationId)
+          (r.snapshot as unknown as { locationId?: string }).locationId =
+            locationId;
+        this.emitUpdate(id, r.snapshot as unknown as Record<string, unknown>);
+      }
+      return this.exactResponse("updateSettings", {
+        id,
+        songId,
+        locationId,
+      });
+    },
+    { resolveEntryId: (p) => (p as { id: string }).id }
   );
 
   // Custom subscribe: returns the in-memory snapshot, and registers subscriber for periodic emits

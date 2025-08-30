@@ -7,6 +7,7 @@ import React, {
   useEffect,
   useMemo,
   useState,
+  useRef,
 } from "react";
 import { useSearchParams } from "next/navigation";
 import type {
@@ -21,10 +22,7 @@ import {
   useSetReady,
   useSubscribePartyWithMembers,
 } from "../hooks/party/usePartyMethods";
-import {
-  useCreateInstance,
-  useStartInstance,
-} from "../hooks/instance/useInstanceMethods";
+import { useInstanceLogic } from "./useInstanceLogic";
 import { useSubscription } from "../hooks/useSubscription";
 
 type GameContextValue = {
@@ -49,8 +47,8 @@ type GameContextValue = {
   leaveParty: () => Promise<void>;
   invitePlayers: () => Promise<boolean>;
 
-  selectSong: (songId: string) => void;
-  selectLocation: (locationId: string) => void;
+  selectSong: (songId: string) => Promise<void>;
+  selectLocation: (locationId: string) => Promise<void>;
   createInstance: () => Promise<string | null>;
   startInstance: () => Promise<void>;
 };
@@ -98,10 +96,12 @@ export function GameProvider({
     }
   }, []);
 
+  const didFetchCharactersRef = useRef(false);
   useEffect(() => {
-    if (!listMine.isReady) {
+    if (!listMine.isReady || didFetchCharactersRef.current) {
       return;
     }
+    didFetchCharactersRef.current = true;
     void (async () => {
       const rows = (await listMine.execute({
         page: 1,
@@ -127,35 +127,15 @@ export function GameProvider({
   const leavePartyMethod = useLeaveParty();
   const setReadyMethod = useSetReady();
   const subscribeWithMembers = useSubscribePartyWithMembers();
-
-  // Instance state
-  const [instanceId, setInstanceId] = useState<string | null>(null);
-  const [instance, setInstance] = useState<TInstanceSnapshot | null>(null);
-  const createInstanceMethod = useCreateInstance();
-  const startInstanceMethod = useStartInstance();
-
-  // Pending selections
-  const [selectedSongId, setSelectedSongId] = useState<string | null>(null);
-  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(
-    null
-  );
-
-  // Subscribe to party updates; use update stream to set snapshot
-  useSubscription("partyService", partyId, {
-    autoSubscribe: !!partyId,
-    onUpdate: (data) => {
-      setParty(data as TPartySnapshot);
-    },
-  });
-
-  // Register on server via subscribeWithMembers to receive updates and get initial snapshot
+  const subscribedPartyRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!partyId) {
+    if (!partyId || !subscribeWithMembers.isReady) {
       return;
     }
-    if (!subscribeWithMembers.isReady) {
+    if (subscribedPartyRef.current === partyId) {
       return;
     }
+    subscribedPartyRef.current = partyId;
     void (async () => {
       const res = (await subscribeWithMembers.execute({
         partyId,
@@ -164,23 +144,44 @@ export function GameProvider({
         setParty(res);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partyId, subscribeWithMembers.isReady]);
+  }, [
+    partyId,
+    subscribeWithMembers.isReady,
+    subscribeWithMembers,
+    subscribeWithMembers.execute,
+  ]);
 
-  // Subscribe to instance updates
-  useSubscription("instanceService", instanceId, {
-    autoSubscribe: !!instanceId,
+  // Use the instance logic hook
+  const {
+    instanceId,
+    instance,
+    selectedSongId,
+    selectedLocationId,
+    selectSong,
+    selectLocation,
+    startInstance,
+    createInstance,
+  } = useInstanceLogic(partyId, party?.instanceId ?? null);
+
+  // Subscribe to party updates; use update stream to set snapshot
+  useSubscription("partyService", partyId, {
+    autoSubscribe: !!partyId,
     onUpdate: (data) => {
-      setInstance(data as TInstanceSnapshot);
+      const partyData = data as TPartySnapshot;
+      setParty(partyData);
     },
   });
 
   // Auto-join invited party if in URL and we have a character selected
+  const didJoinByInviteRef = useRef(false);
   useEffect(() => {
     if (!invitedPartyId || !selectedCharacterId) {
       return;
     }
     if (!joinPartyMethod.isReady) {
+      return;
+    }
+    if (didJoinByInviteRef.current) {
       return;
     }
     void (async () => {
@@ -190,6 +191,7 @@ export function GameProvider({
       });
       if (res) {
         setPartyId(invitedPartyId);
+        didJoinByInviteRef.current = true;
         // Clean URL: remove query param
         const url = new URL(window.location.href);
         url.searchParams.delete("partyId");
@@ -200,11 +202,15 @@ export function GameProvider({
   }, [invitedPartyId, selectedCharacterId, joinPartyMethod.isReady]);
 
   // Auto-join when initialPartyId is provided via slug
+  const didJoinByInitialRef = useRef(false);
   useEffect(() => {
     if (!initialPartyId || !selectedCharacterId) {
       return;
     }
     if (!joinPartyMethod.isReady) {
+      return;
+    }
+    if (didJoinByInitialRef.current) {
       return;
     }
     void (async () => {
@@ -214,6 +220,7 @@ export function GameProvider({
       });
       if (res) {
         setPartyId(initialPartyId);
+        didJoinByInitialRef.current = true;
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -277,41 +284,6 @@ export function GameProvider({
     },
     [partyId, selectedCharacterId, setReadyMethod]
   );
-
-  const selectSong = useCallback(
-    (songId: string) => setSelectedSongId(songId),
-    []
-  );
-  const selectLocation = useCallback(
-    (locationId: string) => setSelectedLocationId(locationId),
-    []
-  );
-
-  const createInstance = useCallback(async (): Promise<string | null> => {
-    if (!partyId || !selectedSongId || !selectedLocationId) {
-      return null;
-    }
-    if (!createInstanceMethod.isReady) {
-      return null;
-    }
-    const res = (await createInstanceMethod.execute({
-      partyId,
-      songId: selectedSongId,
-      locationId: selectedLocationId,
-    })) as { id: string; status: TInstanceSnapshot["status"] } | null;
-    if (res?.id) {
-      setInstanceId(res.id);
-      return res.id;
-    }
-    return null;
-  }, [partyId, selectedSongId, selectedLocationId, createInstanceMethod]);
-
-  const startInstance = useCallback(async () => {
-    if (!instanceId || !startInstanceMethod.isReady) {
-      return;
-    }
-    await startInstanceMethod.execute({ id: instanceId });
-  }, [instanceId, startInstanceMethod]);
 
   const invitePlayers = useCallback(async () => {
     if (!partyId) {

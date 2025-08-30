@@ -355,13 +355,14 @@ model Mob {
 model Party {
   id               String      @id @default(uuid()) @db.Uuid
   hostCharacterId  String      @unique @db.Uuid
+  instanceId       String?     @unique @db.Uuid
   status           PartyStatus @default(Lobby)
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 
   host             Character   @relation(fields: [hostCharacterId], references: [id])
   members          PartyMember[]
-  instances        Instance[]
+  instance         Instance?   @relation("activeInstance")
 }
 
 model PartyMember {
@@ -379,14 +380,14 @@ model PartyMember {
 
 model Instance {
   id          String         @id @default(uuid()) @db.Uuid
-  partyId     String         @db.Uuid
+  partyId     String         @unique @db.Uuid
   locationId  String         @db.Uuid
   songId      String         @db.Uuid
   status      InstanceStatus @default(Pending)
   startedAt   DateTime?
   endedAt     DateTime?
 
-  party       Party          @relation(fields: [partyId], references: [id])
+  party       Party          @relation("activeInstance", fields: [partyId], references: [id])
   location    Location       @relation(fields: [locationId], references: [id])
   song        Song           @relation(fields: [songId], references: [id])
   mobs        InstanceMob[]

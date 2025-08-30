@@ -242,6 +242,7 @@ export default function GameLanding() {
           selectSong(songId);
           setSongDialogOpen(false);
         }}
+        selectedSongId={selectedSongId}
       />
       <LocationSelectDialog
         open={locationDialogOpen}
@@ -250,6 +251,7 @@ export default function GameLanding() {
           selectLocation(locationId);
           setLocationDialogOpen(false);
         }}
+        selectedLocationId={selectedLocationId}
       />
     </Stack>
   );

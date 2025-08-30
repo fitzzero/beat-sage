@@ -77,6 +77,7 @@ export {
 export {
   useCreateInstance,
   useStartInstance,
+  useUpdateInstanceSettings,
 } from "./instance/useInstanceMethods";
 
 // Song hooks

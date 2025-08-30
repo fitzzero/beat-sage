@@ -38,10 +38,16 @@ export default class PartyService extends BaseService<
       this.delegate as unknown as {
         findUnique: (args: {
           where: { id: string };
-          select: { hostCharacterId: boolean };
-        }) => Promise<{ hostCharacterId: string } | null>;
+          select: { hostCharacterId: boolean; instanceId: boolean };
+        }) => Promise<{
+          hostCharacterId: string;
+          instanceId: string | null;
+        } | null>;
       }
-    ).findUnique({ where: { id: partyId }, select: { hostCharacterId: true } });
+    ).findUnique({
+      where: { id: partyId },
+      select: { hostCharacterId: true, instanceId: true },
+    });
     if (!party) throw new Error("Party not found");
     const members = await (
       this.db["partyMember"] as unknown as {
@@ -54,7 +60,11 @@ export default class PartyService extends BaseService<
       where: { partyId },
       select: { characterId: true, isReady: true },
     });
-    return { hostCharacterId: party.hostCharacterId, members };
+    return {
+      hostCharacterId: party.hostCharacterId,
+      members,
+      instanceId: party.instanceId,
+    };
   }
 
   public createParty = this.defineMethod(
@@ -138,6 +148,8 @@ export default class PartyService extends BaseService<
       return this.exactResponse("joinParty", { id: partyId });
     }
   );
+
+  // Selection is managed on the Instance; party remains unaware for MVP
 
   public leaveParty = this.defineMethod(
     "leaveParty",
