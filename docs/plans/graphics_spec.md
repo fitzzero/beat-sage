@@ -1,156 +1,88 @@
-### Graphics stack recommendation (MVP realtime scene)
+### Graphics Architecture (Two-Worlds: WebGL Renderer + MUI HUD)
 
-**TL;DR**: Use Three.js via React Three Fiber (R3F) with `@react-three/drei` and `react-postprocessing`. Add GSAP only for UI/HUD timeline flourishes, not core simulation. This gives excellent Next.js integration, strong ecosystem, and high developer velocity while staying lightweight.
-
----
-
-### Why this stack
-
-- **Best fit for Next.js + React**: R3F is idiomatic React, easy to drop into the existing client UI and MUI layout. Works well with dynamic imports (CSR-only) to avoid SSR issues.
-- **Productivity**: `drei` components (OrbitControls, Instances, Text, Particles, PerformanceMonitor) speed up common tasks. Large pool of examples and prior art.
-- **Effects/VFX**: `react-postprocessing` (bloom, godrays, outlines) and `three-stdlib` utilities cover most visual needs without custom shader work. `maath` adds math, easing, noise, and helpers.
-- **Performance**: Instanced meshes for notes/particles; fine-grained control in `useFrame`; predictable 60fps loop separate from server 10 TPS tick.
-- **LLM familiarity**: Three.js/R3F has the most training data and examples; faster to iterate than OGL/Unity for this use case.
+Goal: Keep the game renderer blazing fast and isolated, while preserving a rich, maintainable HUD using MUI. Avoid TypeScript “union too complex” and ReactSharedInternals pitfalls by strictly separating modules.
 
 ---
 
-### Packages (client workspace)
+World A: Pure Three.js Renderer (background)
 
-- `three`
-- `@react-three/fiber`
-- `@react-three/drei`
-- `react-postprocessing` and `postprocessing`
-- `maath` (optional but handy)
-- `gsap` (optional; for UI/HUD timelines, not core scene)
+- Modules in this world import only Three.js (no MUI, no sx, no R3F).
+- Client-only dynamic import with ssr: false.
+- WebGLRenderer + Scene + Camera + RAF loop.
+- Performance practices:
+  - Instanced meshes for beat arrows, particles, skills.
+  - Merge geometries/material reuse; texture atlases for themed assets.
+  - Interpolate visuals at 60fps between 10 TPS server snapshots.
+- Assets:
+  - SVGs (up.svg/down.svg/left.svg/right.svg) exported to textures.
+  - Character/mob images when available; background images.
+  - Optional postprocessing (bloom/outline) via raw Three or postprocessing lib (non-React).
 
-Install later via Yarn Workspaces in the `client/` package.
+World B: MUI HUD (foreground)
 
----
+- Modules in this world import only MUI/React (no Three, no R3F).
+- Renders DOM overlay (absolute-positioned) above the canvas.
+- Uses sx freely; theme-aware, responsive.
+- Responsibilities:
+  - Main character avatar.
+  - Health/mana bars; skill bar with cooldown states.
+  - Score/XP/combo, notifications, deaths/success.
+  - Inventory and interactions.
 
-### Integration pattern with Next.js
+Host Shell (glue)
 
-- Create a canvas-bound scene component and load it with dynamic import (CSR only):
-
-```tsx
-// Example: client/app/instance/components/InstanceCanvas.tsx
-import { Canvas } from "@react-three/fiber";
-import { PerformanceMonitor } from "@react-three/drei";
-
-export default function InstanceCanvas() {
-  return (
-    <Canvas dpr={[1, 2]} gl={{ antialias: true }}>
-      <PerformanceMonitor />
-      {/* Lights, postprocessing, and scene entities go here */}
-    </Canvas>
-  );
-}
-```
-
-```tsx
-// Example usage with Next dynamic import (disable SSR)
-import dynamic from "next/dynamic";
-const InstanceCanvas = dynamic(() => import("./components/InstanceCanvas"), {
-  ssr: false,
-});
-
-export default function Page() {
-  return (
-    <div style={{ height: "100vh" }}>
-      <InstanceCanvas />
-    </div>
-  );
-}
-```
+- Tiny client component with inline style only (no sx).
+- Renders <GameRenderer /> and <div id="hud-root" /> overlay.
+- GameHud mounts via React portal into #hud-root.
+- Shares state via a neutral store (e.g., Zustand/event emitter). The store must not import MUI or Three.
 
 ---
 
-### Scene architecture (initial)
+Renderer Layering
 
-- **BeatmapLayer**: Arrow/note lanes; use `InstancedMesh` for beats. Positions derived from audio time and `syncStartAtMs`.
-- **CharactersLayer**: Simple rigged or billboarded models for players; minimal idle/cast animations.
-- **MobsLayer**: Light animations (idle, hit flash); health as simple bars/billboards.
-- **SkillVfxLayer**: Instanced particles, trails, and short post-processing bursts (bloom/outline) on hit.
-- **HUD/Overlays**: React DOM or `@react-three/drei` `Html` for beat accuracy feedback, combo/rate indicators.
-
-Implementation notes
-
-- Use `useFrame` for local interpolation/extrapolation between server ticks.
-- Use `drei/Instances` for notes/particles to minimize draw calls.
-- Keep geometries/materials memoized; mutate instance matrices, not React trees.
-- Prefer full snapshot updates from server at 10 TPS; render at 60fps client-side.
+- BeatmapLayer: Instanced planes textured with arrow SVGs; x-position by track, y-position by timing offset vs syncStartAtMs.
+- CharactersLayer: Billboarded quads or simple meshes (swap to models later). Health/mana bars remain in HUD.
+- MobsLayer: Quads/meshes with health bars optionally in-scene (or HUD if preferred). Movement interpolation.
+- SkillVfxLayer: GPU-instanced particles for casts/impacts.
+- Background: static or parallax quad behind layers.
 
 ---
 
-### Data + timing flow
+DOM→Texture (optional, for in-GL styled UI)
 
-- Server remains authoritative at ~10 TPS (Instance snapshot). Client renders at 60fps.
-- Use `syncStartAtMs` from `instanceService:subscribe` to align song playback and beat positions.
-- Interpolate mob positions/HP and character mana/rate locally; reconcile on authoritative updates.
-- Latency compensation: derive beat accuracy from client audio clock vs. beat times; server validates `attemptBeat` events.
-
-Hook blueprint (client)
-
-```ts
-// Pseudocode: useInstanceSub(id) wraps existing socket subscription util
-type InstanceSnapshot = {
-  id: string;
-  status: "Pending" | "Active" | "Complete" | "Failed";
-  startedAt?: string; // ISO
-  syncStartAtMs?: number;
-  songId: string;
-  locationId: string;
-  mobs: Array<{
-    id: string;
-    healthCurrent: number;
-    status: "Alive" | "Dead";
-    distance: number;
-  }>;
-  party: { memberIds: string[] };
-  members?: Array<{
-    characterId: string;
-    mana: { current: number; maximum: number; rate: number; maxRate: number };
-  }>;
-};
-
-function useInstanceSub(instanceId: string) {
-  // subscribe to `${serviceName}:update:${instanceId}` and store last snapshot
-}
-```
+- For static styled components (e.g., custom arrows): export SVG/PNG and load as texture.
+- For dynamic styled widgets: render to image using html-to-image/dom-to-image, upload to CanvasTexture, and update only on content changes (debounce).
+- Text: prefer SDF text (troika-three-text) for sharp, dynamic text inside WebGL.
 
 ---
 
-### Effects and polish (incremental)
+Timing & Data Flow
 
-- **Postprocessing**: bloom on skill hits, subtle vignette, outlines for selected targets.
-- **Particles**: GPU instancing for skill projectiles/impact bursts; limited lifetimes to avoid GC.
-- **Beat accuracy feedback**: color-coded hit flashes and easing-based scales at hit location; short GSAP timeline or `maath` easing.
-
----
-
-### When to choose alternatives
-
-- **Phaser**: Choose if you want a strictly 2D, sprite-first pipeline with built-in tweens and simpler asset workflow. Great for rhythm UIs, but less flexible for 2.5D/3D VFX.
-- **GSAP (alone)**: Not a renderer. Use alongside React DOM/Canvas/WebGL for orchestrated UI timelines, not as the core scene tech.
-- **OGL**: Minimal WebGL wrapper. Good for bespoke small engines, but fewer examples/docs; slower iteration.
-- **Unity**: Heavy, complex CI/WebGL builds, and harder React/Next integration. Overkill for this MVP; avoid unless you need full 3D tooling and editor workflows.
-- **Plain Three.js (no R3F)**: Viable, but you’ll reimplement React integration and state wiring that R3F already solves.
-
-Recommendation: default to R3F; use Phaser only if we commit to a purely 2D look.
+- Server remains authoritative at ~10 TPS; client interpolates at 60fps.
+- Use syncStartAtMs to align beat positions; audio starts +5000ms.
+- Latency compensation: compute client-time vs. beat expectedTime, emit attemptBeat with clientBeatTimeMs; server validates.
 
 ---
 
-### Minimal adoption path
+Integration with Next.js
 
-1. Add deps in `client/` and mount a full-screen `Canvas` via dynamic import.
-2. Render a basic BeatmapLayer with instanced arrows synced to a mocked `syncStartAtMs`.
-3. Wire to real `instanceService:subscribe`; interpolate between snapshots at 60fps.
-4. Add SkillVfx and Mob hit flashes; introduce light postprocessing.
-5. Iterate on assets and camera choreography.
+- GameRenderer and renderer helpers are client-only modules, dynamically imported with ssr: false.
+- MUI HUD lives in separate modules that never import Three.
+- The host wrapper uses inline style for positioning and never uses MUI sx to avoid TS union explosions.
 
 ---
 
-### Open questions
+Minimal Adoption Path
 
-- Are we targeting a 2D aesthetic (Phaser-like) or 2.5D/3D stylized look?
-- Any mobile performance constraints (target devices/FPS)?
-- Preference for timeline tooling (GSAP) vs. physics-based or frame-based anim in R3F?
+1. Implement GameRenderer (pure Three) with instanced arrows from up/down/left/right.svg.
+2. Add GameHud (MUI) as overlay with score/combo and health/mana.
+3. Wire to instance snapshots; interpolate mob/beat visuals; emit attemptBeat.
+4. Add particles/VFX; optional postprocessing.
+5. Consider DOM→Texture baking for any complex in-GL widget.
+
+---
+
+When to revisit alternatives
+
+- Phaser (2D-only) if we abandon WebGL depth/VFX needs.
+- Unity if we need editor-driven pipelines and heavy 3D, at the cost of web/Next integration.
