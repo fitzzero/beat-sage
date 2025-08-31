@@ -38,6 +38,23 @@ Source: server/src/services/instance/index.ts
 { id: string; status: PrismaInstance["status"]; }
 ```
 
+### restartInstance
+
+- Access: Read
+- Entry-scoped: Yes
+
+#### Payload
+
+```ts
+{ id: string; }
+```
+
+#### Response
+
+```ts
+{ id: string; status: PrismaInstance["status"]; startedAt?: Date | null; }
+```
+
 ### startInstance
 
 - Access: Read
@@ -53,4 +70,21 @@ Source: server/src/services/instance/index.ts
 
 ```ts
 { id: string; status: PrismaInstance["status"]; startedAt?: Date | null; }
+```
+
+### updateSettings
+
+- Access: Read
+- Entry-scoped: Yes
+
+#### Payload
+
+```ts
+{ id: string; songId?: string; locationId?: string; }
+```
+
+#### Response
+
+```ts
+{ id: string; songId?: string; locationId?: string; }
 ```
