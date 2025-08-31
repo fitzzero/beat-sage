@@ -128,11 +128,51 @@ export default class InstanceService extends BaseService<
         throw new Error("Insufficient permissions");
       }
 
-      const created = await this.create({
-        partyId,
-        locationId,
-        songId,
-      } as Prisma.InstanceUncheckedCreateInput);
+      let created: {
+        id: string;
+        status: PrismaInstance["status"];
+        startedAt: Date | null;
+      };
+      try {
+        const row = (await this.create({
+          partyId,
+          locationId,
+          songId,
+        } as Prisma.InstanceUncheckedCreateInput)) as unknown as {
+          id: string;
+          status: PrismaInstance["status"];
+          startedAt: Date | null;
+        };
+        created = row;
+      } catch (err: unknown) {
+        // Idempotency: if an instance already exists for this party, return it
+        const maybeKnown = err as { code?: string } | undefined;
+        if (maybeKnown?.code === "P2002") {
+          const existing = (await (
+            this.db["instance"] as unknown as {
+              findFirst: (args: {
+                where: { partyId: string };
+                select: { id: boolean; status: boolean; startedAt: boolean };
+              }) => Promise<{
+                id: string;
+                status: PrismaInstance["status"];
+                startedAt: Date | null;
+              } | null>;
+            }
+          ).findFirst({
+            where: { partyId },
+            select: { id: true, status: true, startedAt: true },
+          })) as {
+            id: string;
+            status: PrismaInstance["status"];
+            startedAt: Date | null;
+          } | null;
+          if (!existing) throw err;
+          created = existing;
+        } else {
+          throw err;
+        }
+      }
 
       // Set this instance as the party's active instance
       await (
@@ -547,6 +587,87 @@ export default class InstanceService extends BaseService<
           (updated as unknown as { status: PrismaInstance["status"] })
             ?.status ?? "Active",
         startedAt: new Date(),
+      });
+    },
+    { resolveEntryId: (p) => (p as { id: string }).id }
+  );
+
+  // Restart/reset the instance to initial state for testing
+  public restartInstance = this.defineMethod(
+    "restartInstance",
+    "Read",
+    async (payload, socket) => {
+      if (!socket.userId) throw new Error("Authentication required");
+      const id = (payload as { id: string }).id;
+
+      // Ensure the instance exists
+      const inst = await (
+        this.delegate as unknown as {
+          findUnique: (args: {
+            where: { id: string };
+            select: {
+              id: boolean;
+              partyId: boolean;
+              songId: boolean;
+              locationId: boolean;
+              status: boolean;
+              startedAt: boolean;
+            };
+          }) => Promise<{
+            id: string;
+            partyId: string;
+            songId: string;
+            locationId: string;
+            status: PrismaInstance["status"];
+            startedAt: Date | null;
+          } | null>;
+        }
+      ).findUnique({
+        where: { id },
+        select: {
+          id: true,
+          partyId: true,
+          songId: true,
+          locationId: true,
+          status: true,
+          startedAt: true,
+        },
+      });
+      if (!inst) throw new Error("Instance not found");
+
+      // Reset DB fields to Pending and clear startedAt
+      await this.update(id, {
+        status: "Pending" as unknown as PrismaInstance["status"],
+        startedAt: null,
+      } as Prisma.InstanceUncheckedUpdateInput);
+
+      // Reset in-memory state: stop ticker, rebuild snapshot, clear members mana
+      const rec = this.active.get(id);
+      if (rec && rec.ticker) {
+        clearInterval(rec.ticker);
+        rec.ticker = null;
+      }
+      /* eslint-disable @typescript-eslint/no-unsafe-assignment */
+      const freshSnap: InstanceSnapshot = await this.buildSnapshot({
+        id: inst.id,
+        partyId: inst.partyId,
+        locationId: inst.locationId,
+        songId: inst.songId,
+        status: "Pending" as unknown as PrismaInstance["status"],
+        startedAt: null,
+      });
+      /* eslint-enable @typescript-eslint/no-unsafe-assignment */
+      this.ensureActiveRecord(id, freshSnap);
+      const active = this.active.get(id)!;
+      active.membersMana.clear();
+
+      // Emit updated snapshot
+      this.emitInstanceSnapshot(id);
+
+      return this.exactResponse("restartInstance", {
+        id,
+        status: "Pending" as unknown as PrismaInstance["status"],
+        startedAt: null,
       });
     },
     { resolveEntryId: (p) => (p as { id: string }).id }

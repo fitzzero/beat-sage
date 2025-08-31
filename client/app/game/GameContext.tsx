@@ -37,6 +37,13 @@ type GameContextValue = {
 
   instanceId: string | null;
   instance: TInstanceSnapshot | null;
+  songBeats: Array<{
+    index: number;
+    timeMs: number;
+    direction: string;
+    holdMs: number;
+  }>;
+  effectiveStartMs?: number;
 
   selectedSongId: string | null;
   selectedLocationId: string | null;
@@ -173,6 +180,8 @@ export function GameProvider({
     instance,
     selectedSongId,
     selectedLocationId,
+    songBeats,
+    effectiveStartMs,
     selectSong,
     selectLocation,
     startInstance,
@@ -381,6 +390,8 @@ export function GameProvider({
     isReady,
     instanceId,
     instance,
+    songBeats,
+    effectiveStartMs,
     selectedSongId,
     selectedLocationId,
     setReady,

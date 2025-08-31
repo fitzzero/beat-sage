@@ -479,6 +479,14 @@ export type InstanceServiceMethods = {
       startedAt?: Date | null;
     };
   };
+  restartInstance: {
+    payload: { id: string };
+    response: {
+      id: string;
+      status: Instance["status"];
+      startedAt?: Date | null;
+    };
+  };
   attemptBeat: {
     payload: { id: string; characterId: string; clientBeatTimeMs: number };
     response: {

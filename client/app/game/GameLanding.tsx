@@ -4,9 +4,15 @@ import React, { useEffect, useState } from "react";
 import { Box, Button, Chip, Divider, Stack, Typography } from "@mui/material";
 import { usePathname, useRouter } from "next/navigation";
 import { useGame } from "./GameContext";
+import dynamic from "next/dynamic";
+const GameHost = dynamic(() => import("./components/GameHost"), {
+  ssr: false,
+}) as unknown as React.ComponentType<{ children?: React.ReactNode }>;
+const GameHud = dynamic(() => import("./components/GameHud"), { ssr: false });
 import SongSelectDialog from "./components/SongSelectDialog";
 import LocationSelectDialog from "./components/LocationSelectDialog";
 import { useListSongs, useListLocations } from "../hooks";
+import { useRestartInstance } from "../hooks/instance/useInstanceMethods";
 
 export default function GameLanding() {
   const {
@@ -25,10 +31,12 @@ export default function GameLanding() {
     partyId,
     createInstance,
     leaveParty,
+    instanceId,
   } = useGame();
 
   const [songDialogOpen, setSongDialogOpen] = useState(false);
   const [locationDialogOpen, setLocationDialogOpen] = useState(false);
+  const restartInstance = useRestartInstance();
   const router = useRouter();
   const pathname = usePathname();
   const listSongs = useListSongs();
@@ -91,6 +99,21 @@ export default function GameLanding() {
     void resolve();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLocationId, listLocations.isReady]);
+
+  // Active game render path (prefer local instanceId for immediate transition)
+  if (instanceId && selectedCharacterId) {
+    return (
+      <GameHost>
+        <GameHud
+          instanceId={instanceId}
+          characterName={
+            characters.find((c) => c.id === selectedCharacterId)?.name
+          }
+          songName={songLabel ?? undefined}
+        />
+      </GameHost>
+    );
+  }
 
   return (
     <Stack spacing={3} sx={{ py: 3 }}>
@@ -178,6 +201,33 @@ export default function GameLanding() {
               disabled={!selectedSongId || !selectedLocationId || !partyId}
             >
               Create Instance
+            </Button>
+          )}
+          {isHost && instanceId && (
+            <Button
+              sx={{ mt: 1 }}
+              variant="contained"
+              size="small"
+              onClick={() => {
+                // Start via debug panel or a direct hook if desired; for now rely on panel
+                const ev = new CustomEvent("bs-debug-start-instance");
+                window.dispatchEvent(ev);
+              }}
+            >
+              Start Instance
+            </Button>
+          )}
+          {party?.instanceId && (
+            <Button
+              sx={{ mt: 1 }}
+              variant="outlined"
+              size="small"
+              onClick={() =>
+                void restartInstance.execute({ id: party.instanceId! })
+              }
+              disabled={!restartInstance.isReady}
+            >
+              Restart Instance (dev)
             </Button>
           )}
         </Stack>

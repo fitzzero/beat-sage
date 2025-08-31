@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { InstanceSnapshot as TInstanceSnapshot } from "@shared/types";
 import {
   useCreateInstance,
@@ -8,6 +8,7 @@ import {
   useUpdateInstanceSettings,
 } from "../hooks/instance/useInstanceMethods";
 import { useSubscription } from "../hooks/useSubscription";
+import { useGetSongBeats } from "../hooks/song/useSongMethods";
 
 export function useInstanceLogic(
   partyId: string | null,
@@ -21,10 +22,14 @@ export function useInstanceLogic(
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(
     null
   );
+  const [songBeats, setSongBeats] = useState<
+    Array<{ index: number; timeMs: number; direction: string; holdMs: number }>
+  >([]);
 
   const createInstanceMethod = useCreateInstance();
   const startInstanceMethod = useStartInstance();
   const updateInstanceSettings = useUpdateInstanceSettings();
+  const getSongBeats = useGetSongBeats();
 
   // Update instanceId when party provides it
   useEffect(() => {
@@ -54,6 +59,30 @@ export function useInstanceLogic(
       setSelectedLocationId(instance.locationId);
     }
   }, [instance, instanceId]);
+
+  // Fetch song beats whenever selectedSongId changes
+  const lastBeatsSongIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedSongId || !getSongBeats.isReady) {
+      setSongBeats([]);
+      return;
+    }
+    if (lastBeatsSongIdRef.current === selectedSongId) {
+      return;
+    }
+    lastBeatsSongIdRef.current = selectedSongId;
+    void (async () => {
+      const beats = (await getSongBeats.execute({
+        songId: selectedSongId,
+      })) as Array<{
+        index: number;
+        timeMs: number;
+        direction: string;
+        holdMs: number;
+      }> | null;
+      setSongBeats(beats || []);
+    })();
+  }, [selectedSongId, getSongBeats.isReady]);
 
   // Create instance when both song and location are selected
   useEffect(() => {
@@ -203,6 +232,15 @@ export function useInstanceLogic(
     instance,
     selectedSongId,
     selectedLocationId,
+    songBeats,
+    effectiveStartMs: useMemo(() => {
+      const startedAt = instance?.startedAt
+        ? new Date(instance.startedAt as unknown as string).getTime()
+        : undefined;
+      // Force recompute key by including status so restart clears timeline
+      const key = instance?.status;
+      return startedAt ? startedAt + 5000 : undefined;
+    }, [instance?.startedAt, instance?.status]),
     selectSong,
     selectLocation,
     startInstance,

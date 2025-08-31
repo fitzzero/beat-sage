@@ -112,11 +112,19 @@ export async function startTestServer(overrides?: {
     // Clear any active timers from instance service
     if (instanceService) {
       // Access the active instances map and clear any timers
-      const activeInstances = (instanceService as any).active;
+      const activeInstances = (instanceService as unknown as {
+        active?: Map<
+          string,
+          {
+            ticker?: ReturnType<typeof setInterval> | null;
+          }
+        >;
+      }).active;
       if (activeInstances) {
-        for (const [id, rec] of activeInstances) {
-          if (rec.ticker) {
-            clearInterval(rec.ticker);
+        for (const [_id, rec] of activeInstances) {
+          const ticker = rec.ticker;
+          if (ticker) {
+            clearInterval(ticker);
             rec.ticker = null;
           }
         }
