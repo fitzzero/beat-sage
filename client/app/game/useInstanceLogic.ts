@@ -82,7 +82,7 @@ export function useInstanceLogic(
       }> | null;
       setSongBeats(beats || []);
     })();
-  }, [selectedSongId, getSongBeats.isReady]);
+  }, [selectedSongId, getSongBeats.isReady, getSongBeats]);
 
   // Create instance when both song and location are selected
   useEffect(() => {
@@ -237,8 +237,6 @@ export function useInstanceLogic(
       const startedAt = instance?.startedAt
         ? new Date(instance.startedAt as unknown as string).getTime()
         : undefined;
-      // Force recompute key by including status so restart clears timeline
-      const key = instance?.status;
       return startedAt ? startedAt + 5000 : undefined;
     }, [instance?.startedAt, instance?.status]),
     selectSong,

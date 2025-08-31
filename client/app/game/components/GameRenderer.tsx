@@ -91,8 +91,20 @@ export default function GameRenderer({
       mesh.instanceMatrix.needsUpdate = true;
       return mesh;
     }
-    // Top -> Bottom order: Left, Up, Down, Right (shifted upward to leave room for HUD)
-    const trackYs = [2.0, 1.3, 0.6, -0.1];
+    // Row layout: first row aligned to the top of the visible container
+    const rowGap = 0.4;
+    const indicatorHeight = 0.35;
+    const topMargin = indicatorHeight / 2 + 0.05;
+    function computeTrackYs(): number[] {
+      const topYLocal = camera.top - topMargin;
+      return [
+        topYLocal,
+        topYLocal - rowGap,
+        topYLocal - rowGap * 2,
+        topYLocal - rowGap * 3,
+      ];
+    }
+    let trackYs = computeTrackYs();
     const arrowsLeft = createInstancedArrows(texLeft, trackYs[0], 28);
     const arrowsUp = createInstancedArrows(texUp, trackYs[1], 28);
     const arrowsDown = createInstancedArrows(texDown, trackYs[2], 28);
@@ -233,6 +245,7 @@ export default function GameRenderer({
       camera.updateProjectionMatrix();
       // position indicators at left edge and align Y with tracks
       const leftX = camera.left + 0.5;
+      trackYs = computeTrackYs();
       indLeft.position.set(leftX, trackYs[0], 0);
       indUp.position.set(leftX, trackYs[1], 0);
       indDown.position.set(leftX, trackYs[2], 0);

@@ -25,6 +25,13 @@ type ActiveInstance = {
       experience: number;
     }
   >; // characterId -> mana state (in-memory during Active)
+  membersHealth: Map<
+    string,
+    {
+      current: number;
+      maximum: number;
+    }
+  >;
   ticker?: ReturnType<typeof setInterval> | null;
 };
 
@@ -70,6 +77,7 @@ export default class InstanceService extends BaseService<
         snapshot,
         subscribers: new Set<CustomSocket>(),
         membersMana: new Map(),
+        membersHealth: new Map(),
         ticker: null,
       };
       /* eslint-enable @typescript-eslint/no-unsafe-assignment */
@@ -347,9 +355,24 @@ export default class InstanceService extends BaseService<
     const membersManaArr = Array.from(rec.membersMana.entries()).map(
       ([characterId, m]) => ({ characterId, ...m })
     );
+    // Health tracking: infer from snapshot if present; otherwise compute from characters if needed later
+    const membersHealthArr = ((
+      rec.snapshot as unknown as {
+        membersHealth?: Array<{
+          characterId: string;
+          current: number;
+          maximum: number;
+        }>;
+      }
+    ).membersHealth || []) as Array<{
+      characterId: string;
+      current: number;
+      maximum: number;
+    }>;
     const payload = {
       ...rec.snapshot,
       membersMana: membersManaArr,
+      membersHealth: membersHealthArr,
     } as unknown as Record<string, unknown>;
     this.subscribers.get(id)?.forEach((s) => {
       s.emit(`${this.serviceName}:update:${id}`, payload);
@@ -579,6 +602,39 @@ export default class InstanceService extends BaseService<
             inst.startedAt ?? null;
           this.emitInstanceSnapshot(id);
         }
+        // Initialize members health from characters' maxHealth
+        const rec = this.active.get(id)!;
+        const memberIds: string[] = (
+          rec.snapshot as unknown as { party: { memberIds: string[] } }
+        ).party.memberIds;
+        rec.membersHealth.clear();
+        for (const characterId of memberIds) {
+          // Fetch character maxHealth
+          const ch = await (
+            this.db["character"] as unknown as {
+              findUnique: (args: {
+                where: { id: string };
+                select: { maxHealth: boolean };
+              }) => Promise<{ maxHealth: number } | null>;
+            }
+          ).findUnique({
+            where: { id: characterId },
+            select: { maxHealth: true },
+          });
+          const maximum = ch?.maxHealth ?? 100;
+          rec.membersHealth.set(characterId, { current: maximum, maximum });
+        }
+        (
+          rec.snapshot as unknown as {
+            membersHealth?: Array<{
+              characterId: string;
+              current: number;
+              maximum: number;
+            }>;
+          }
+        ).membersHealth = Array.from(rec.membersHealth.entries()).map(
+          ([characterId, h]) => ({ characterId, ...h })
+        );
       }
       this.startTickIfNeeded(id);
       return this.exactResponse("startInstance", {

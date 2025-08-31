@@ -460,6 +460,11 @@ export type InstanceSnapshot = {
     maxRate: number;
     experience: number;
   }>;
+  membersHealth?: Array<{
+    characterId: string;
+    current: number;
+    maximum: number;
+  }>;
 };
 
 export type InstanceServiceMethods = {

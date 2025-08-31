@@ -10,3 +10,4 @@ alwaysApply: false
 - Use `rem` units for font sizes
 - Abstract responsive breakpoints via a single custom hook (avoid prop threading)
 - Keep individual components under 500 lines; extract subcomponents when needed
+- Use Next.js `Image` instead of `<img>` for all app images (icons allowed via optimized Image with `priority={false}` and explicit width/height)

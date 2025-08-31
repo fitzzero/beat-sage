@@ -11,7 +11,7 @@ import {
 export default function GameDebugPanel() {
   const {
     instanceId,
-    instance,
+    instance: _instance,
     selectedSongId,
     selectedLocationId,
     songBeats,
@@ -29,15 +29,12 @@ export default function GameDebugPanel() {
       <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
         <Typography variant="subtitle2">Debug</Typography>
         <Chip size="small" label={`instance: ${instanceId ?? "—"}`} />
-        <Chip
-          size="small"
-          label={`status: ${(instance as any)?.status ?? "—"}`}
-        />
+        <Chip size="small" label={`status: ${_instance?.status ?? "—"}`} />
         <Chip
           size="small"
           label={`startedAt: ${
-            (instance as any)?.startedAt
-              ? new Date((instance as any).startedAt).toLocaleTimeString()
+            _instance?.startedAt
+              ? new Date(_instance.startedAt as unknown as string).toLocaleTimeString()
               : "—"
           }`}
         />
